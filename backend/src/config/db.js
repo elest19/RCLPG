@@ -10,10 +10,17 @@ types.setTypeParser(1114, (value) => value);
 const pool = new pg.Pool({
   connectionString: env.databaseUrl,
   ssl: env.nodeEnv === 'production' ? { rejectUnauthorized: false } : undefined,
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000, // fail fast instead of hanging forever
 });
 
-pool.on('connect', (client) => {
-  client.query(`SET timezone = '${APP_TIMEZONE}'`);
+pool.on('connect', async (client) => {
+  try {
+    await client.query(`SET timezone = '${APP_TIMEZONE}'`);
+  } catch (error) {
+    console.error('Failed to initialize database timezone', error);
+  }
 });
 
 pool.on('error', (err) => {
