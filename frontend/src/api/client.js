@@ -16,6 +16,31 @@ export function clearSession() {
   localStorage.removeItem("rclpg_admin");
 }
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableNetworkError(error) {
+  const message = String(error?.message || '');
+  return (
+    error instanceof TypeError ||
+    /Failed to fetch|NetworkError|ERR_CONNECTION_CLOSED|ECONNRESET|ECONNREFUSED/i.test(message)
+  );
+}
+
+async function requestWithRetry(path, options = {}, retries = 1, delayMs = 3000) {
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    try {
+      return await request(path, options);
+    } catch (error) {
+      if (attempt === retries || !isRetryableNetworkError(error)) {
+        throw error;
+      }
+      await delay(delayMs);
+    }
+  }
+}
+
 export function isSessionExpired() {
   const expiry = getExpiry();
   if (!expiry) return true;
@@ -63,10 +88,15 @@ async function request(path, options = {}) {
 
 export const api = {
   login: (username, password) =>
-    request("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ username, password }),
-    }),
+    requestWithRetry(
+      "/auth/login",
+      {
+        method: "POST",
+        body: JSON.stringify({ username, password }),
+      },
+      6,
+      5000,
+    ),
   register: (name, username, email, password, phoneNumber) =>
     request("/auth/register", {
       method: "POST",
