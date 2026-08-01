@@ -72,9 +72,9 @@ function InventoryTable({
   }
 
   return (
-    <div className="overflow-x-auto border border-slate-100 rounded-xl">
-      <table className="w-full text-left text-xs sm:text-sm whitespace-nowrap">
-        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
+    <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
+      <table className="w-full min-w-[900px] text-left text-xs sm:text-sm whitespace-nowrap">
+        <thead className="bg-red-500 text-slate-100 font-bold uppercase tracking-wider">
           <tr>
             <th className="p-3">Status</th>
             <th className="p-3 text-center">Stock</th>
@@ -86,11 +86,14 @@ function InventoryTable({
             {isAdmin && <th className="p-3 text-center">Actions</th>}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+        <tbody className="font-medium text-slate-700">
           {products.map((p) => {
             const isArchiveEligible = archiveEligibleIds.has(p.product_id);
             return (
-              <tr key={p.product_id}>
+              <tr
+                key={p.product_id}
+                className="odd:bg-white even:bg-slate-50/70 hover:bg-slate-100/80 transition-colors"
+              >
                 <td className="p-3">{p.status}</td>
                 <td className="p-3 text-center font-black">{p.stock_quantity}</td>
                 <td className="p-3 text-center">

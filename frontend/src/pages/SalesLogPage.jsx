@@ -10,6 +10,7 @@ import RecordExpenseModal from "../components/RecordExpenseModal";
 import DownloadSalesLogModal from "../components/DownloadSalesLogModal";
 import Modal from "../components/Modal";
 import { subscribeRealtime } from "../utils/realtime";
+import { getSalesEntrySummary } from "../utils/salesTable";
 
 export default function SalesLogPage() {
   const { showToast } = useToast();
@@ -29,6 +30,8 @@ export default function SalesLogPage() {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [saleModalOpen, setSaleModalOpen] = useState(false);
   const [expenseModalOpen, setExpenseModalOpen] = useState(false);
+  const [expenseEditTarget, setExpenseEditTarget] = useState(null);
+  const [expenseDeleteTarget, setExpenseDeleteTarget] = useState(null);
   const [downloadModalOpen, setDownloadModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [expenses, setExpenses] = useState([]);
@@ -136,7 +139,7 @@ export default function SalesLogPage() {
         api.getCustomers(),
       ]);
       setSales(salesRes.data);
-      console.log(salesRes.data);
+  
       setProducts(productsRes.data);
       setCustomers(customersRes.data);
     } catch (err) {
@@ -259,91 +262,476 @@ export default function SalesLogPage() {
     }
   };
 
+  const confirmExpenseDelete = async () => {
+    if (!expenseDeleteTarget) return;
+    try {
+      setSaving(true);
+      await api.deleteExpense(expenseDeleteTarget.expenses_id);
+      showToast("Expense Deleted", "Expense removed successfully.");
+      setExpenseDeleteTarget(null);
+      await loadExpenses();
+    } catch (err) {
+      showToast("Delete Failed", err.message, "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openExpenseEditor = (expense) => {
+    setExpenseEditTarget(expense);
+    setExpenseModalOpen(true);
+  };
+
+  const closeExpenseModal = () => {
+    setExpenseModalOpen(false);
+    setExpenseEditTarget(null);
+  };
+
   if (loading && !sales.length) return <LoadingSpinner />;
 
   return (
-    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
-      <div className="border-b border-slate-100 pb-4 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-bold text-slate-900">
-            Customer & Sales Log
-          </h2>
-          {isAdministrator && (
-            <button
-              type="button"
-              onClick={() => setDownloadModalOpen(true)}
-              className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs px-5 py-2.5 rounded-xl"
-            >
-              Download Sales Log
-            </button>
-          )}
-        </div>
-
-        <div className="flex flex-col lg:flex-row lg:items-end gap-3">
-          {isAdministrator && (
-            <div className="flex flex-wrap gap-2 shrink-0">
+    <div className="space-y-6">
+      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-5">
+        <div className="border-b border-slate-100 pb-4 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-bold text-slate-900">
+              Customer & Sales Log
+            </h2>
+            {isAdministrator && (
               <button
                 type="button"
-                onClick={() => setExpenseModalOpen(true)}
+                onClick={() => setDownloadModalOpen(true)}
                 className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs px-5 py-2.5 rounded-xl"
               >
-                Add Expenses
+                Download Sales Log
               </button>
-              <button
-                type="button"
-                onClick={() => setSaleModalOpen(true)}
-                className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl"
-              >
-                Record Sale
-              </button>
-            </div>
-          )}
+            )}
+          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 flex-1">
-            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              <span className="mb-1 block">Search</span>
-              <input
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search transactions"
-                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
-              />
-            </label>
-            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              <span className="mb-1 block">Customer</span>
-              <input
-                type="text"
-                value={customerNameFilter}
-                onChange={(e) => setCustomerNameFilter(e.target.value)}
-                placeholder="Filter by customer"
-                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
-              />
-            </label>
-            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              <span className="mb-1 block">Date</span>
-              <input
-                type="date"
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
-              />
-            </label>
-            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              <span className="mb-1 block">Product</span>
-              <input
-                type="text"
-                value={productFilter}
-                onChange={(e) => setProductFilter(e.target.value)}
-                placeholder="Brand, weight, status"
-                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
-              />
-            </label>
+          <div className="flex flex-col lg:flex-row lg:items-end gap-3">
+            {isAdministrator && (
+              <div className="flex flex-wrap gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExpenseEditTarget(null);
+                    setExpenseModalOpen(true);
+                  }}
+                  className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs px-5 py-2.5 rounded-xl"
+                >
+                  Add Expenses
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSaleModalOpen(true)}
+                  className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl"
+                >
+                  Record Sale
+                </button>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 flex-1">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                <span className="mb-1 block">Search</span>
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search transactions"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                />
+              </label>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                <span className="mb-1 block">Customer</span>
+                <input
+                  type="text"
+                  value={customerNameFilter}
+                  onChange={(e) => setCustomerNameFilter(e.target.value)}
+                  placeholder="Filter by customer"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                />
+              </label>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                <span className="mb-1 block">Date</span>
+                <input
+                  type="date"
+                  value={dateFilter}
+                  onChange={(e) => setDateFilter(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                />
+              </label>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                <span className="mb-1 block">Product</span>
+                <input
+                  type="text"
+                  value={productFilter}
+                  onChange={(e) => setProductFilter(e.target.value)}
+                  placeholder="Brand, weight, status"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                />
+              </label>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+        {isAdministrator && selectedSale && (
+          <div className="bg-red-50/50 p-5 rounded-xl border-2 border-red-200 shadow-inner space-y-4">
+            <div className="border-b border-slate-200 pb-2 flex justify-between items-center">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  Modify Transaction Values
+                </h3>
+                <p className="text-[11px] text-slate-400">
+                  Sale ID: {selectedSale.sale_id}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedSaleId(null)}
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold"
+                aria-label="Close override panel"
+              >
+                &times;
+              </button>
+            </div>
+            <SaleForm
+              compact
+              showPaymentMethod={false}
+              customers={customers}
+              products={products}
+              brands={brands}
+              initialValues={{
+                customerId: selectedSale.customer_id,
+                customerName: selectedSale.customer_name,
+                fbName: selectedSale.fb_name,
+                phoneNumber: selectedSale.phone_number,
+                priceType: selectedSale.price_type,
+                brand: selectedSale.brand,
+                filled: selectedSale.product_status === "Filled Tank",
+                productId: selectedSale.product_id,
+                quantity: selectedSale.sale_quantity,
+                unitPrice: selectedSale.unit_price,
+                lpgTankVariant: selectedSale.lpg_tank_variant || "",
+              }}
+              submitLabel={saving ? "Saving..." : "Commit Entry Correction"}
+              onSubmit={handleOverride}
+            />
+          </div>
+        )}
+
+        <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm mt-2">
+          <table className="w-full min-w-[1100px] text-left text-xs sm:text-sm whitespace-nowrap">
+            <thead className="bg-red-500 text-slate-100 font-bold uppercase tracking-wider">
+              <tr>
+                {[
+                  { key: "log_date", label: "Log Date", align: "text-left" },
+                  { key: "product", label: "Product", align: "text-left" },
+                  { key: "customer", label: "Customer", align: "text-left" },
+                  { key: "type", label: "Type", align: "text-left" },
+                  { key: "traded", label: "Traded", align: "text-center" },
+                  { key: "qty", label: "Qty", align: "text-center" },
+                  { key: "unit_price", label: "Unit Price", align: "text-right" },
+                  { key: "total_billing", label: "Total Billing", align: "text-right" },
+                  { key: "balance_paid", label: "Balance Paid", align: "text-right" },
+                ].map((column) => (
+                  <th
+                    key={column.key}
+                    className={`p-3 ${column.align} cursor-pointer select-none`}
+                    onClick={() => handleSort(column.key)}
+                  >
+                    <div className="inline-flex items-center gap-1">
+                      {column.label}
+                      {sortConfig.field === column.key && (
+                        <span className="text-xs">{sortConfig.direction === "asc" ? "▲" : "▼"}</span>
+                      )}
+                    </div>
+                  </th>
+                ))}
+                {isAdministrator && (
+                  <th className="p-3 text-center">Actions</th>
+                )}
+              </tr>
+            </thead>
+            <tbody className="font-medium text-slate-600">
+              {pagedSales.map((sale) => {
+                const isPayment = sale.entry_type === "payment";
+                const entrySummary = getSalesEntrySummary(sale);
+                return (
+                  <tr
+                    key={`${sale.entry_type}-${sale.sale_id}-${sale.log_date}`}
+                    className={
+                      selectedSaleId === sale.sale_id
+                        ? "bg-red-50"
+                        : "odd:bg-white even:bg-slate-50/70 hover:bg-slate-100/80 transition-colors"
+                    }
+                  >
+                    <td className="p-3">
+                      {formatDateLocale(sale.log_date || sale.date_created || sale.date_paid)}
+                    </td>
+                    <td className="p-3">
+                        {sale.weight_class}kg - {sale.brand}
+                    </td>
+                    <td className="p-3 font-bold text-slate-800 ">
+                      {sale.customer_name}
+                    </td>
+                    <td className="p-3">
+                      {entrySummary.typeLabel}
+                    </td>
+                    <td className="p-3 font-semibold text-indigo-700 text-center">
+                        {sale.lpg_tank_variant}
+                    </td>
+                    <td className="p-3 text-center font-bold">
+                      {
+                        isPayment ? " " : sale.sale_quantity
+                      }
+                    </td>
+                    <td className="p-3 text-center">
+                      {isPayment ? "" : formatCurrency(sale.unit_price)}
+                    </td>
+                    <td className="p-3 text-center text-red-600 font-extrabold">
+                      {isPayment ? formatCurrency(sale.balance_paid || 0) : formatCurrency(sale.total_amount)}
+                    </td>
+                    <td className="p-3 text-center font-semibold text-slate-700">
+                      {entrySummary.balancePaidLabel}
+                    </td>
+                    {isAdministrator && (
+                      <td className="p-3 text-center space-x-1">
+                        {!isPayment && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedSaleId(sale.sale_id)}
+                              className="text-xs font-bold bg-slate-100 hover:bg-slate-800 hover:text-white px-2 py-1 rounded-lg"
+                            >
+                              Override
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteTarget(sale)}
+                              className="text-xs font-bold bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-2 py-1 rounded-lg"
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
+                        {isPayment && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPaymentEditTarget(sale);
+                                setPaymentAmount(sale.balance_paid || "");
+                              }}
+                              className="text-xs font-bold bg-slate-100 hover:bg-slate-800 hover:text-white px-2 py-1 rounded-lg"
+                            >
+                              Override
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPaymentDeleteTarget(sale)}
+                              className="text-xs font-bold bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-2 py-1 rounded-lg"
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+              {sales.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={isAdministrator ? 11 : 10}
+                    className="text-center py-8 text-slate-400"
+                  >
+                    No transactions found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {sortedSales.length > pageSize && (
+          <div className="flex items-center justify-between gap-3 px-4 py-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-600">
+            <button
+              type="button"
+              onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
+              disabled={page <= 1}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <div>
+              Page {page} of {totalPages}
+            </div>
+            <button
+              type="button"
+              onClick={() => setPage((prev) => Math.min(prev + 1, totalPages))}
+              disabled={page >= totalPages}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        )}
+
+        {isAdministrator && deleteTarget && (
+          <Modal
+            title="Delete Sale"
+            onClose={() => setDeleteTarget(null)}
+            footer={
+              <>
+                <button
+                  type="button"
+                  onClick={() => setDeleteTarget(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 text-sm font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={confirmDelete}
+                  className="px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-bold"
+                >
+                  Confirm Delete
+                </button>
+              </>
+            }
+          >
+            <p className="text-sm text-slate-600">
+              Permanently delete this sale for{" "}
+              <strong>{deleteTarget.customer_name}</strong>? Stock will be
+              restored and all payment records will be removed.
+            </p>
+          </Modal>
+        )}
+
+        {isAdministrator && paymentEditTarget && (
+          <Modal
+            title="Override Payment"
+            onClose={() => setPaymentEditTarget(null)}
+            footer={
+              <>
+                <button
+                  type="button"
+                  onClick={() => setPaymentEditTarget(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 text-sm font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={handlePaymentOverride}
+                  className="px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-bold"
+                >
+                  {saving ? "Saving..." : "Save Payment"}
+                </button>
+              </>
+            }
+          >
+            <div className="space-y-3">
+              <label className="block text-xs font-bold uppercase text-slate-500">
+                Payment Amount
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value)}
+                className="w-full text-sm p-3 border border-slate-200 rounded-xl"
+              />
+            </div>
+          </Modal>
+        )}
+
+        {isAdministrator && expenseDeleteTarget && (
+          <Modal
+            title="Delete Expense"
+            onClose={() => setExpenseDeleteTarget(null)}
+            footer={
+              <>
+                <button
+                  type="button"
+                  onClick={() => setExpenseDeleteTarget(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 text-sm font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={confirmExpenseDelete}
+                  className="px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-bold"
+                >
+                  Confirm Delete
+                </button>
+              </>
+            }
+          >
+            <p className="text-sm text-slate-600">
+              Delete <strong>{expenseDeleteTarget.expenses}</strong> expense of {" "}
+              <strong>{formatCurrency(expenseDeleteTarget.amount)}</strong>?
+            </p>
+          </Modal>
+        )}
+
+        {isAdministrator && paymentDeleteTarget && (
+          <Modal
+            title="Delete Payment"
+            onClose={() => setPaymentDeleteTarget(null)}
+            footer={
+              <>
+                <button
+                  type="button"
+                  onClick={() => setPaymentDeleteTarget(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 text-sm font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={confirmPaymentDelete}
+                  className="px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-bold"
+                >
+                  Confirm Delete
+                </button>
+              </>
+            }
+          >
+            <p className="text-sm text-slate-600">
+              Delete this payment record for <strong>{paymentDeleteTarget.customer_name}</strong>? The sale itself will remain unchanged and remaining credit will be recalculated.
+            </p>
+          </Modal>
+        )}
+
+        <RecordSaleModal
+          open={saleModalOpen}
+          onClose={() => setSaleModalOpen(false)}
+          onSuccess={loadData}
+        />
+        <RecordExpenseModal
+          open={expenseModalOpen}
+          onClose={closeExpenseModal}
+          editingExpense={expenseEditTarget}
+          onSuccess={() => {
+            loadData();
+            loadExpenses();
+          }}
+        />
+        {downloadModalOpen && (
+          <DownloadSalesLogModal onClose={() => setDownloadModalOpen(false)} />
+        )}
+      </div>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 sm:p-6 space-y-4">
+      <section className="rounded-xl sm:p-1 space-y-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h3 className="text-sm font-bold text-slate-900">Expense Overview</h3>
@@ -383,18 +771,22 @@ export default function SalesLogPage() {
             )}
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs whitespace-nowrap">
-            <thead className="bg-white border-b border-slate-200 text-slate-500 font-bold uppercase">
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+          <table className="w-full min-w-[480px] text-left text-xs whitespace-nowrap">
+            <thead className="bg-red-500 text-slate-100 font-bold uppercase tracking-wide">
               <tr>
                 <th className="p-3 text-center">Expense</th>
                 <th className="p-3 text-center">Amount</th>
                 <th className="p-3 text-center">Date</th>
+                {isAdministrator && <th className="p-3 text-center">Actions</th>}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
+            <tbody className="font-medium text-slate-600">
               {expenses.map((item) => (
-                <tr key={item.expenses_id}>
+                <tr
+                  key={item.expenses_id}
+                  className="odd:bg-white even:bg-slate-50/70 hover:bg-slate-100/80 transition-colors"
+                >
                   <td className="p-3 font-bold text-slate-800 text-center">
                     {item.expenses}
                   </td>
@@ -404,6 +796,24 @@ export default function SalesLogPage() {
                   <td className="p-3 text-center">
                     {formatDateLocale(item.date)}
                   </td>
+                  {isAdministrator && (
+                    <td className="p-3 text-center space-x-1">
+                      <button
+                        type="button"
+                        onClick={() => openExpenseEditor(item)}
+                        className="text-xs font-bold bg-amber-100 hover:bg-amber-500 hover:text-white px-2.5 py-1 rounded-lg"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExpenseDeleteTarget(item)}
+                        className="text-xs font-bold bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-2.5 py-1 rounded-lg"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
               {expenses.length === 0 && (
@@ -416,331 +826,8 @@ export default function SalesLogPage() {
             </tbody>
           </table>
         </div>
-      </div>
-
-      {isAdministrator && selectedSale && (
-        <div className="bg-red-50/50 p-5 rounded-xl border-2 border-red-200 shadow-inner space-y-4">
-          <div className="border-b border-slate-200 pb-2 flex justify-between items-center">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">
-                Modify Transaction Values
-              </h3>
-              <p className="text-[11px] text-slate-400">
-                Sale ID: {selectedSale.sale_id}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setSelectedSaleId(null)}
-              className="text-slate-400 hover:text-slate-600 text-lg font-bold"
-              aria-label="Close override panel"
-            >
-              &times;
-            </button>
-          </div>
-          <SaleForm
-            compact
-            showPaymentMethod={false}
-            customers={customers}
-            products={products}
-            brands={brands}
-            initialValues={{
-              customerId: selectedSale.customer_id,
-              customerName: selectedSale.customer_name,
-              fbName: selectedSale.fb_name,
-              phoneNumber: selectedSale.phone_number,
-              priceType: selectedSale.price_type,
-              brand: selectedSale.brand,
-              filled: selectedSale.product_status === "Filled Tank",
-              productId: selectedSale.product_id,
-              quantity: selectedSale.sale_quantity,
-              unitPrice: selectedSale.unit_price,
-              lpgTankVariant: selectedSale.lpg_tank_variant || "",
-            }}
-            submitLabel={saving ? "Saving..." : "Commit Entry Correction"}
-            onSubmit={handleOverride}
-          />
-        </div>
-      )}
-
-      <div className="overflow-x-auto border border-slate-100 rounded-xl">
-        <table className="w-full text-left text-xs sm:text-sm whitespace-nowrap">
-          <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
-            <tr>
-              {[
-                { key: "log_date", label: "Log Date", align: "text-left" },
-                { key: "product", label: "Product", align: "text-left" },
-                { key: "customer", label: "Customer", align: "text-left" },
-                { key: "type", label: "Type", align: "text-left" },
-                { key: "traded", label: "Traded", align: "text-center" },
-                { key: "qty", label: "Qty", align: "text-center" },
-                { key: "unit_price", label: "Unit Price", align: "text-right" },
-                { key: "total_billing", label: "Total Billing", align: "text-right" },
-                { key: "balance_paid", label: "Balance Paid", align: "text-right" },
-              ].map((column) => (
-                <th
-                  key={column.key}
-                  className={`p-3 ${column.align} cursor-pointer select-none`}
-                  onClick={() => handleSort(column.key)}
-                >
-                  <div className="inline-flex items-center gap-1">
-                    {column.label}
-                    {sortConfig.field === column.key && (
-                      <span className="text-xs">{sortConfig.direction === "asc" ? "▲" : "▼"}</span>
-                    )}
-                  </div>
-                </th>
-              ))}
-              {isAdministrator && (
-                <th className="p-3 text-center">Actions</th>
-              )}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
-            {pagedSales.map((sale) => {
-              const isPayment = sale.entry_type === "payment";
-              return (
-                <tr
-                  key={`${sale.entry_type}-${sale.sale_id}-${sale.log_date}`}
-                  className={
-                    selectedSaleId === sale.sale_id
-                      ? "bg-red-50"
-                      : "hover:bg-slate-50/80"
-                  }
-                >
-                  <td className="p-3">
-                    {formatDateLocale(sale.log_date || sale.date_created || sale.date_paid)}
-                  </td>
-                  <td className="p-3">
-                      {sale.weight_class}kg - {sale.brand}
-                  </td>
-                  <td className="p-3 font-bold text-slate-800 ">
-                    {sale.customer_name}
-                  </td>
-                  <td className="p-3">
-                    {isPayment ? "Credit Payment" : sale.payment_option}
-                  </td>
-                  <td className="p-3 font-semibold text-indigo-700 text-center">
-                      {sale.lpg_tank_variant}
-                  </td>
-                  <td className="p-3 text-center font-bold">
-                    {
-                      isPayment ? " " : sale.sale_quantity
-                    }
-                  </td>
-                  <td className="p-3 text-center">
-                    {isPayment ? "" : formatCurrency(sale.unit_price)}
-                  </td>
-                  <td className="p-3 text-center text-red-600 font-extrabold">
-                    {isPayment ? formatCurrency(sale.balance_paid || 0) : formatCurrency(sale.total_amount)}
-                  </td>
-                  <td className="p-3 text-center font-semibold text-slate-700">
-                  {sale.payment_option === "Fully Paid"
-                    ? `Fully Paid`
-                    : formatCurrency(sale.balance_paid || 0)}
-                </td>
-                  {isAdministrator && (
-                    <td className="p-3 text-center space-x-1">
-                      {!isPayment && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedSaleId(sale.sale_id)}
-                            className="text-xs font-bold bg-slate-100 hover:bg-slate-800 hover:text-white px-2 py-1 rounded-lg"
-                          >
-                            Override
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDeleteTarget(sale)}
-                            className="text-xs font-bold bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-2 py-1 rounded-lg"
-                          >
-                            Delete
-                          </button>
-                        </>
-                      )}
-                      {isPayment && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setPaymentEditTarget(sale);
-                              setPaymentAmount(sale.balance_paid || "");
-                            }}
-                            className="text-xs font-bold bg-slate-100 hover:bg-slate-800 hover:text-white px-2 py-1 rounded-lg"
-                          >
-                            Override
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setPaymentDeleteTarget(sale)}
-                            className="text-xs font-bold bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-2 py-1 rounded-lg"
-                          >
-                            Delete
-                          </button>
-                        </>
-                      )}
-                    </td>
-                  )}
-                </tr>
-              );
-            })}
-            {sales.length === 0 && (
-              <tr>
-                <td
-                  colSpan={isAdministrator ? 11 : 10}
-                  className="text-center py-8 text-slate-400"
-                >
-                  No transactions found.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {sortedSales.length > pageSize && (
-        <div className="flex items-center justify-between gap-3 px-4 py-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-600">
-          <button
-            type="button"
-            onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
-            disabled={page <= 1}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Previous
-          </button>
-          <div>
-            Page {page} of {totalPages}
-          </div>
-          <button
-            type="button"
-            onClick={() => setPage((prev) => Math.min(prev + 1, totalPages))}
-            disabled={page >= totalPages}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Next
-          </button>
-        </div>
-      )}
-
-      {isAdministrator && deleteTarget && (
-        <Modal
-          title="Delete Sale"
-          onClose={() => setDeleteTarget(null)}
-          footer={
-            <>
-              <button
-                type="button"
-                onClick={() => setDeleteTarget(null)}
-                className="px-4 py-2 rounded-xl bg-slate-100 text-sm font-bold"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={saving}
-                onClick={confirmDelete}
-                className="px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-bold"
-              >
-                Confirm Delete
-              </button>
-            </>
-          }
-        >
-          <p className="text-sm text-slate-600">
-            Permanently delete this sale for{" "}
-            <strong>{deleteTarget.customer_name}</strong>? Stock will be
-            restored and all payment records will be removed.
-          </p>
-        </Modal>
-      )}
-
-      {isAdministrator && paymentEditTarget && (
-        <Modal
-          title="Override Payment"
-          onClose={() => setPaymentEditTarget(null)}
-          footer={
-            <>
-              <button
-                type="button"
-                onClick={() => setPaymentEditTarget(null)}
-                className="px-4 py-2 rounded-xl bg-slate-100 text-sm font-bold"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={saving}
-                onClick={handlePaymentOverride}
-                className="px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-bold"
-              >
-                {saving ? "Saving..." : "Save Payment"}
-              </button>
-            </>
-          }
-        >
-          <div className="space-y-3">
-            <label className="block text-xs font-bold uppercase text-slate-500">
-              Payment Amount
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              min="0.01"
-              value={paymentAmount}
-              onChange={(e) => setPaymentAmount(e.target.value)}
-              className="w-full text-sm p-3 border border-slate-200 rounded-xl"
-            />
-          </div>
-        </Modal>
-      )}
-
-      {isAdministrator && paymentDeleteTarget && (
-        <Modal
-          title="Delete Payment"
-          onClose={() => setPaymentDeleteTarget(null)}
-          footer={
-            <>
-              <button
-                type="button"
-                onClick={() => setPaymentDeleteTarget(null)}
-                className="px-4 py-2 rounded-xl bg-slate-100 text-sm font-bold"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={saving}
-                onClick={confirmPaymentDelete}
-                className="px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-bold"
-              >
-                Confirm Delete
-              </button>
-            </>
-          }
-        >
-          <p className="text-sm text-slate-600">
-            Delete this payment record for <strong>{paymentDeleteTarget.customer_name}</strong>? The sale itself will remain unchanged and remaining credit will be recalculated.
-          </p>
-        </Modal>
-      )}
-
-      <RecordSaleModal
-        open={saleModalOpen}
-        onClose={() => setSaleModalOpen(false)}
-        onSuccess={loadData}
-      />
-      <RecordExpenseModal
-        open={expenseModalOpen}
-        onClose={() => setExpenseModalOpen(false)}
-        onSuccess={() => {
-          loadData();
-          loadExpenses();
-        }}
-      />
-      {downloadModalOpen && (
-        <DownloadSalesLogModal onClose={() => setDownloadModalOpen(false)} />
-      )}
+      </section>
     </div>
+  </div>
   );
 }

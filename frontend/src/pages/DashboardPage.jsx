@@ -11,6 +11,7 @@ import SalesReportSection from "../components/SalesReportSection";
 import BrandInventoryOverview from "../components/BrandInventoryOverview";
 import Modal from "../components/Modal";
 import { subscribeRealtime } from "../utils/realtime";
+import { getSalesEntrySummary } from "../utils/salesTable";
 
 export default function DashboardPage() {
   const { showToast } = useToast();
@@ -300,9 +301,9 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs whitespace-nowrap">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase">
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <table className="w-full min-w-[520px] text-left text-xs whitespace-nowrap">
+            <thead className="bg-red-500 text-slate-100 font-bold uppercase tracking-wide">
               <tr>
                 <th className="p-3 text-center">Expense</th>
                 <th className="p-3 text-center">Amount</th>
@@ -312,9 +313,12 @@ export default function DashboardPage() {
                 )}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
+            <tbody className="font-medium text-slate-600">
               {dailyExpenses.map((item) => (
-                <tr key={item.expenses_id}>
+                <tr
+                  key={item.expenses_id}
+                  className="odd:bg-white even:bg-slate-50/70 hover:bg-slate-100/80 transition-colors"
+                >
                   <td className="p-3 font-bold text-slate-800 text-center">
                     {item.expenses}
                   </td>
@@ -376,38 +380,44 @@ export default function DashboardPage() {
             View Full Log &rarr;
           </Link>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs whitespace-nowrap">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase">
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <table className="w-full min-w-[720px] text-left text-xs whitespace-nowrap">
+            <thead className="bg-red-500 text-slate-100 font-bold uppercase tracking-wide">
               <tr>
                 <th className="p-3">Customer</th>
-                <th className="p-3">Product Details</th>
-                <th className="p-3">Customer LPG</th>
-                <th className="p-3 text-center">Qty</th>
-                <th className="p-3 text-right">Total</th>
+                <th className="p-3">Product</th>
+                <th className="p-3">Type</th>
+                <th className="p-3 text-center">Traded</th>
+                <th className="p-3 text-right">Balance Paid</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
-              {recentSales.map((sale) => (
-                <tr key={sale.sale_id}>
-                  <td className="p-3 font-bold text-slate-800">
-                    {sale.customer_name}
-                  </td>
-                  <td className="p-3">
-                    {sale.brand} - {sale.weight_class}kg - {sale.product_status}
-                  </td>
-                  <td className="p-3">{sale.lpg_tank_variant || "-"}</td>
-                  <td className="p-3 text-center font-bold">
-                    {sale.sale_quantity}
-                  </td>
-                  <td className="p-3 text-right text-red-600 font-bold">
-                    {formatCurrency(sale.total_amount)}
-                  </td>
-                </tr>
-              ))}
+            <tbody className="font-medium text-slate-600">
+              {recentSales.map((sale) => {
+                const entrySummary = getSalesEntrySummary(sale);
+                return (
+                  <tr
+                    key={`${sale.entry_type}-${sale.sale_id}-${sale.log_date}`}
+                    className="odd:bg-white even:bg-slate-50/70 hover:bg-slate-100/80 transition-colors"
+                  >
+                    <td className="p-3 font-bold text-slate-800">
+                      {sale.customer_name}
+                    </td>
+                    <td className="p-3">
+                      {sale.brand} - {sale.weight_class}kg - {sale.product_status}
+                    </td>
+                    <td className="p-3">{entrySummary.typeLabel}</td>
+                    <td className="p-3 text-center font-semibold text-indigo-700">
+                      {sale.lpg_tank_variant || "-"}
+                    </td>
+                    <td className="p-3 text-right text-red-600 font-bold">
+                      {entrySummary.balancePaidLabel}
+                    </td>
+                  </tr>
+                );
+              })}
               {recentSales.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="text-center py-4 text-slate-400">
+                  <td colSpan={5} className="text-center py-4 text-slate-400">
                     No sales recorded today.
                   </td>
                 </tr>

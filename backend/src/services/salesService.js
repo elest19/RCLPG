@@ -11,6 +11,7 @@ import * as customerService from "./customerService.js";
 import * as creditService from "./creditService.js";
 import * as expenseService from "./expenseService.js";
 import { buildSalesReportSummary } from "./reportSummary.js";
+import { getSalesLogBalancePaid } from "../utils/salesLogEntries.js";
 
 function buildDateFilter(period, startDate, endDate) {
   return buildExportDateFilter(period, startDate, endDate, "sr.date_created");
@@ -167,6 +168,8 @@ export async function listSales({
       p.weight_class,
       p.status AS product_status,
       ch.payment_option,
+      COALESCE(initial_credit.balance_paid, 0)::numeric AS initial_credit_balance_paid,
+      GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0)::numeric AS remaining_balance,
       sr.date_created AS log_date,
       'sale' AS entry_type
    FROM sales_records sr
@@ -182,7 +185,24 @@ export async function listSales({
         END AS payment_option
     FROM credit_history
     GROUP BY sales_id
-) ch ON ch.sales_id = sr.sale_id  
+) ch ON ch.sales_id = sr.sale_id
+   LEFT JOIN (
+    SELECT sales_id, SUM(balance_paid)::numeric AS total_paid
+    FROM credit_history
+    GROUP BY sales_id
+) pay ON pay.sales_id = sr.sale_id
+   LEFT JOIN (
+    SELECT sales_id, balance_paid
+    FROM (
+      SELECT
+        sales_id,
+        balance_paid,
+        ROW_NUMBER() OVER (PARTITION BY sales_id ORDER BY credit_id ASC) AS row_num
+      FROM credit_history
+      WHERE payment_option = 'Credit'
+    ) ranked_credit
+    WHERE row_num = 1
+   ) initial_credit ON initial_credit.sales_id = sr.sale_id
    ${salesBaseWhere}
    ORDER BY sr.date_created DESC`,
   salesParams,
@@ -234,11 +254,16 @@ export async function listSales({
   
     .map((row) => ({
       ...row,
-      
       sale_quantity: row.sale_quantity ? Number(row.sale_quantity) : null,
       unit_price: Number(row.unit_price),
       total_amount: Number(row.total_amount),
-      balance_paid: row.balance_paid ? Number(row.balance_paid) : null,
+      balance_paid: row.entry_type === 'payment'
+        ? Number(row.balance_paid || 0)
+        : getSalesLogBalancePaid({
+            paymentOption: row.payment_option,
+            initialCreditBalancePaid: row.initial_credit_balance_paid,
+            fallbackBalancePaid: row.balance_paid,
+          }),
       weight_class: Number(row.weight_class),
       log_date: row.log_date || row.date_created || row.date_paid,
     }))
@@ -414,7 +439,6 @@ export async function createSale(payload) {
   } finally {
     client.release();
   }
-  console.log("6. Done");
 }
 
 export async function updateSale(saleId, payload) {
@@ -598,6 +622,11 @@ export async function getSalesReport({
       WHERE payment_option = 'Credit'
       GROUP BY sales_id
     ) credit_sales ON credit_sales.sales_id = sr.sale_id
+    LEFT JOIN (
+      SELECT sales_id, SUM(balance_paid)::numeric AS total_paid
+      FROM credit_history
+      GROUP BY sales_id
+    ) pay ON pay.sales_id = sr.sale_id
     WHERE sr.status IN ('Active', 'Finished')
     ${saleWhere}`;
 
@@ -612,22 +641,20 @@ export async function getSalesReport({
     `SELECT
        COALESCE(SUM(sr.total_amount), 0)::numeric AS total_gross_revenue,
        COALESCE(SUM(p.initial_price * sr.sale_quantity), 0)::numeric AS total_cogs,
+       COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NULL THEN sr.total_amount ELSE 0 END), 0)::numeric AS total_fully_paid_sales,
        COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NULL THEN p.initial_price * sr.sale_quantity ELSE 0 END), 0)::numeric AS total_fully_paid_cogs,
+       COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NOT NULL AND GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0) <= 0 THEN sr.total_amount ELSE 0 END), 0)::numeric AS fully_paid_credit_sales,
+       COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NOT NULL AND GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0) <= 0 THEN p.initial_price * sr.sale_quantity ELSE 0 END), 0)::numeric AS fully_paid_credit_cogs,
+       COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NULL OR GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0) <= 0 THEN sr.total_amount ELSE 0 END), 0)::numeric AS qualified_sales_revenue,
+       COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NULL OR GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0) <= 0 THEN p.initial_price * sr.sale_quantity ELSE 0 END), 0)::numeric AS qualified_cogs,
        COALESCE(SUM(p.weight_class * sr.sale_quantity), 0)::numeric AS total_volume_kg,
        COUNT(*)::int AS total_orders
      ${saleBaseFrom}`,
     saleParams,
   );
 
-  const paymentSummaryResult = await query(
-    `SELECT
-       COALESCE(SUM(ch.balance_paid), 0)::numeric AS total_gross_revenue
-     ${paymentBaseFrom}`,
-    paymentParams,
-  );
-
   const summary = summaryResult.rows[0];
-  const totalRevenue = Number(paymentSummaryResult.rows[0].total_gross_revenue);
+  const totalRevenue = Number(summary.total_gross_revenue);
   const costOfGoodsSold = Number(summary.total_cogs);
   const totalFullyPaidCostOfGoodsSold = Number(summary.total_fully_paid_cogs);
   const totalOrders = summary.total_orders || 0;
@@ -636,22 +663,6 @@ export async function getSalesReport({
     startDate,
     endDate,
   });
-
-  const fullyPaidSalesResult = await query(
-    `SELECT
-       COALESCE(SUM(sr.total_amount), 0)::numeric AS total_fully_paid_sales
-     FROM sales_records sr
-     LEFT JOIN (
-       SELECT sales_id
-       FROM credit_history
-       WHERE payment_option = 'Credit'
-       GROUP BY sales_id
-     ) credit_sales ON credit_sales.sales_id = sr.sale_id
-     WHERE sr.status IN ('Active', 'Finished')
-       ${saleWhere}
-       AND credit_sales.sales_id IS NULL`,
-    saleParams,
-  );
 
   const creditBalanceResult = await query(
     `SELECT
@@ -674,9 +685,7 @@ export async function getSalesReport({
     saleParams,
   );
 
-  const totalFullyPaidSales = Number(
-    fullyPaidSalesResult.rows[0].total_fully_paid_sales || 0,
-  );
+  const totalFullyPaidSales = Number(summary.total_fully_paid_sales || 0);
   const totalCreditBalance = Number(
     creditBalanceResult.rows[0].total_credit_balance || 0,
   );
@@ -692,6 +701,10 @@ export async function getSalesReport({
     totalVolumeKg: Number(summary.total_volume_kg),
     totalFullyPaidSales,
     totalFullyPaidCostOfGoodsSold,
+    fullyPaidCreditSalesRevenue: Number(summary.fully_paid_credit_sales || 0),
+    fullyPaidCreditCostOfGoodsSold: Number(summary.fully_paid_credit_cogs || 0),
+    qualifiedSalesRevenue: Number(summary.qualified_sales_revenue || 0),
+    qualifiedCostOfGoodsSold: Number(summary.qualified_cogs || 0),
     totalCreditBalance,
   });
 
@@ -1093,6 +1106,11 @@ export async function getSalesReportAnalytics(period, startDate, endDate) {
       WHERE payment_option = 'Credit'
       GROUP BY sales_id
     ) credit_sales ON credit_sales.sales_id = sr.sale_id
+    LEFT JOIN (
+      SELECT sales_id, SUM(balance_paid)::numeric AS total_paid
+      FROM credit_history
+      GROUP BY sales_id
+    ) pay ON pay.sales_id = sr.sale_id
     WHERE sr.status IN ('Active', 'Finished')
     ${saleWhere}`;
 
@@ -1107,22 +1125,20 @@ export async function getSalesReportAnalytics(period, startDate, endDate) {
     `SELECT
        COALESCE(SUM(sr.total_amount), 0)::numeric AS total_gross_revenue,
        COALESCE(SUM(p.initial_price * sr.sale_quantity), 0)::numeric AS total_cogs,
+       COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NULL THEN sr.total_amount ELSE 0 END), 0)::numeric AS total_fully_paid_sales,
        COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NULL THEN p.initial_price * sr.sale_quantity ELSE 0 END), 0)::numeric AS total_fully_paid_cogs,
+       COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NOT NULL AND GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0) <= 0 THEN sr.total_amount ELSE 0 END), 0)::numeric AS fully_paid_credit_sales,
+       COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NOT NULL AND GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0) <= 0 THEN p.initial_price * sr.sale_quantity ELSE 0 END), 0)::numeric AS fully_paid_credit_cogs,
+       COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NULL OR GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0) <= 0 THEN sr.total_amount ELSE 0 END), 0)::numeric AS qualified_sales_revenue,
+       COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NULL OR GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0) <= 0 THEN p.initial_price * sr.sale_quantity ELSE 0 END), 0)::numeric AS qualified_cogs,
        COALESCE(SUM(p.weight_class * sr.sale_quantity), 0)::numeric AS total_volume_kg,
        COUNT(*)::int AS total_orders
      ${saleBaseFrom}`,
     saleParams,
   );
 
-  const paymentSummaryResult = await query(
-    `SELECT
-       COALESCE(SUM(ch.balance_paid), 0)::numeric AS total_gross_revenue
-     ${paymentBaseFrom}`,
-    paymentParams,
-  );
-
   const summary = summaryResult.rows[0];
-  const grossIncome = Number(paymentSummaryResult.rows[0].total_gross_revenue);
+  const grossIncome = Number(summary.total_gross_revenue);
   const costOfGoodsSold = Number(summary.total_cogs);
   const totalOrders = summary.total_orders || 0;
   const totalVolumeKg = Number(summary.total_volume_kg);
@@ -1130,22 +1146,6 @@ export async function getSalesReportAnalytics(period, startDate, endDate) {
     exportPeriod,
     startDate,
     endDate,
-  );
-
-  const fullyPaidSalesResult = await query(
-    `SELECT
-       COALESCE(SUM(sr.total_amount), 0)::numeric AS total_fully_paid_sales
-     FROM sales_records sr
-     LEFT JOIN (
-       SELECT sales_id
-       FROM credit_history
-       WHERE payment_option = 'Credit'
-       GROUP BY sales_id
-     ) credit_sales ON credit_sales.sales_id = sr.sale_id
-     WHERE sr.status IN ('Active', 'Finished')
-       ${saleWhere}
-       AND credit_sales.sales_id IS NULL`,
-    saleParams,
   );
 
   const creditBalanceResult = await query(
@@ -1169,9 +1169,7 @@ export async function getSalesReportAnalytics(period, startDate, endDate) {
     saleParams,
   );
 
-  const totalFullyPaidSales = Number(
-    fullyPaidSalesResult.rows[0].total_fully_paid_sales || 0,
-  );
+  const totalFullyPaidSales = Number(summary.total_fully_paid_sales || 0);
   const totalCreditBalance = Number(
     creditBalanceResult.rows[0].total_credit_balance || 0,
   );
@@ -1184,6 +1182,10 @@ export async function getSalesReportAnalytics(period, startDate, endDate) {
     totalVolumeKg,
     totalFullyPaidSales,
     totalFullyPaidCostOfGoodsSold: Number(summary.total_fully_paid_cogs),
+    fullyPaidCreditSalesRevenue: Number(summary.fully_paid_credit_sales || 0),
+    fullyPaidCreditCostOfGoodsSold: Number(summary.fully_paid_credit_cogs || 0),
+    qualifiedSalesRevenue: Number(summary.qualified_sales_revenue || 0),
+    qualifiedCostOfGoodsSold: Number(summary.qualified_cogs || 0),
     totalCreditBalance,
   });
 

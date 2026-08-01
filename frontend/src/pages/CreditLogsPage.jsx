@@ -72,7 +72,7 @@ function CreditDetailModal({ saleId, readOnly, onClose, onSettled }) {
       showToast('Payment Recorded', 'Installment saved successfully.');
       setConfirmSettlement(null);
       setAmountToPay('');
-      await loadSummary();
+      onClose?.();
       onSettled?.();
     } catch (err) {
       showToast('Payment Failed', err.message, 'error');
@@ -319,9 +319,9 @@ export default function CreditLogsPage() {
         </label>
       </div>
 
-      <div className="overflow-x-auto border border-slate-100 rounded-xl">
-        <table className="w-full text-left text-xs sm:text-sm whitespace-nowrap">
-          <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
+        <table className="w-full min-w-[900px] text-left text-xs sm:text-sm whitespace-nowrap">
+          <thead className="bg-red-500 text-slate-100 font-bold uppercase tracking-wider">
             <tr>
               <th className="p-3">Customer Name</th>
               <th className="p-3">Number</th>
@@ -333,9 +333,12 @@ export default function CreditLogsPage() {
               <th className="p-3 text-center">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
+          <tbody className="font-medium text-slate-600">
             {pagedCredits.map((row) => (
-              <tr key={row.sale_id} className="hover:bg-slate-50/80">
+              <tr
+                key={row.sale_id}
+                className="odd:bg-white even:bg-slate-50/70 hover:bg-slate-100/80 transition-colors"
+              >
                 <td className="p-3 font-bold text-slate-800">{row.customer_name}</td>
                 <td className="p-3 font-mono text-xs">{row.phone_number || '-'}</td>
                 <td className="p-3">{row.product_details}</td>

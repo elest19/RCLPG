@@ -295,30 +295,37 @@ export default function SalesReportSection({ refreshKey = 0 }) {
         </Text>
       ) : (
         <>
-          <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
+          <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
             <MetricCard
-              label="Gross Income"
-              value={formatCurrency(summary?.grossIncome)}
+              label="Total Sales Revenue"
+              value={formatCurrency(summary?.totalSalesRevenue ?? summary?.grossIncome)}
               icon={<GrossIncomeIcon />}
               tone="text-emerald-600"
-              formula={summary?.grossIncomeFormula}
+              formula={summary?.totalSalesRevenueFormula ?? summary?.grossIncomeFormula}
             />
             <MetricCard
-              label="Net Income (Fully Paid & Credit Sale)"
-              value={formatCurrency(summary?.netIncome)}
+              label="Total Net Income"
+              value={formatCurrency(summary?.netIncomeQualified)}
+              icon={<NetIncomeIcon />}
+              tone="text-cyan-600"
+              formula={summary?.netIncomeQualifiedFormula}
+            />
+            <MetricCard
+              label="Fully Paid Net Income"
+              value={formatCurrency(summary?.netIncomeFullyPaid)}
               icon={<NetIncomeIcon />}
               tone="text-indigo-600"
-              formula={summary?.netIncomeFormula}
+              formula={summary?.netIncomeFullyPaidFormula}
             />
             <MetricCard
-              label="Net Income (Only Fully Paid Sales)"
-              value={formatCurrency(summary?.netIncomeWithoutCredit)}
+              label="Expected Credit Net Income"
+              value={formatCurrency(summary?.expectedNetIncome ?? summary?.netIncome)}
               icon={<NetIncomeIcon />}
-              tone="text-amber-600"
-              formula={summary?.netIncomeWithoutCreditFormula}
+              tone="text-violet-600"
+              formula={summary?.expectedNetIncomeFormula ?? summary?.netIncomeFormula}
             />
             <MetricCard
-              label="Total Credit Balance"
+              label="Remaining Credit Balance"
               value={formatCurrency(summary?.totalCreditBalance)}
               icon={<CreditBalanceIcon />}
               tone="text-slate-700"
@@ -423,7 +430,7 @@ export default function SalesReportSection({ refreshKey = 0 }) {
                       stroke="#10b981"
                       strokeWidth={2}
                       dot={{ r: 4 }}
-                      name="Revenue"
+                      name="Total Sales Revenue"
                     />
                     <Line
                       type="monotone"
@@ -439,7 +446,7 @@ export default function SalesReportSection({ refreshKey = 0 }) {
                       stroke="#8b5cf6"
                       strokeWidth={2}
                       dot={{ r: 4 }}
-                      name="Net Income"
+                      name="Net Income (All Sales)"
                     />
                     <Line
                       type="monotone"
@@ -447,7 +454,7 @@ export default function SalesReportSection({ refreshKey = 0 }) {
                       stroke="#f59e0b"
                       strokeWidth={2}
                       dot={{ r: 4 }}
-                      name="Net Income (Only Fully Paid Sale)"
+                      name="Net Income (Fully Paid Payment)"
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -475,10 +482,10 @@ export default function SalesReportSection({ refreshKey = 0 }) {
                     <YAxis />
                     <Tooltip
                       formatter={(value, name) => {
-                        if (name === "grossIncome") return [formatCurrency(value), "Gross Income"];
-                        if (name === "netIncome") return [formatCurrency(value), "Net Income"];
+                        if (name === "grossIncome") return [formatCurrency(value), "Total Sales Revenue"];
+                        if (name === "netIncome") return [formatCurrency(value), "Net Income (All Sales)"];
                         if (name === "netIncomeFullyPaid")
-                          return [formatCurrency(value), "Net Income (Only Fully Paid Sale)"];
+                          return [formatCurrency(value), "Net Income (Fully Paid Payment)"];
                         if (name === "orders") return [value, "Orders"];
                         return [value, name];
                       }}
@@ -488,13 +495,13 @@ export default function SalesReportSection({ refreshKey = 0 }) {
                     <Bar
                       dataKey="grossIncome"
                       fill="#10b981"
-                      name="Gross Income"
+                      name="Total Sales Revenue"
                     />
-                    <Bar dataKey="netIncome" fill="#8b5cf6" name="Net Income" />
+                    <Bar dataKey="netIncome" fill="#8b5cf6" name="Net Income (All Sales)" />
                     <Bar
                       dataKey="netIncomeFullyPaid"
                       fill="#f59e0b"
-                      name="Net Income (Only Fully Paid Sale)"
+                      name="Net Income (Fully Paid Payment)"
                     />
                   </BarChart>
                 </ResponsiveContainer>

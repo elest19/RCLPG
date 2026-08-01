@@ -33,6 +33,27 @@ function formatPhpCurrency(value) {
   })}`;
 }
 
+function getSalesReportSummaryRows(summary = {}) {
+  const totalSalesRevenue = Number(summary.totalSalesRevenue ?? summary.grossIncome ?? summary.totalGrossRevenue ?? 0);
+  const fullyPaidNetIncome = Number(summary.netIncomeFullyPaid ?? summary.netIncomeWithoutCredit ?? 0);
+  const creditNetIncome = Number(summary.netIncomeCreditFullyPaid ?? summary.expectedNetIncome ?? 0);
+  const combinedNetIncome = Number(summary.netIncomeQualified ?? summary.netIncome ?? 0);
+  const expectedCreditNetIncome = Number(summary.expectedNetIncome ?? combinedNetIncome ?? 0);
+  const totalCreditBalance = Number(summary.totalCreditBalance ?? 0);
+  const totalExpenses = Number(summary.totalExpenses ?? 0);
+  const totalOrders = Number(summary.totalOrders ?? 0);
+
+  return [
+    { label: "Total Sales Revenue", value: totalSalesRevenue, isCurrency: true },
+    { label: "Net Income on Combined Fully Paid and Credit Payment", value: combinedNetIncome, isCurrency: true },
+    { label: "Net Income on Fully Paid Payment", value: fullyPaidNetIncome, isCurrency: true },
+    { label: "Expected Income When All Credit is Paid", value: expectedCreditNetIncome, isCurrency: true },
+    { label: "Remaining Credit Balance", value: totalCreditBalance, isCurrency: true },
+    { label: "Total Expenses", value: totalExpenses, isCurrency: true },
+    { label: "Total Orders", value: totalOrders, isCurrency: false },
+  ];
+}
+
 async function fetchChartBuffer(config, width = 520, height = 320) {
   const url = `https://quickchart.io/chart?width=${width}&height=${height}&format=png&c=${encodeURIComponent(JSON.stringify(config))}`;
   const response = await fetch(url);
@@ -91,28 +112,19 @@ export async function buildSalesReportExcelBuffer(
   summarySheet.addRow(["Reporting Period", periodLabel]);
   summarySheet.addRow([]);
   summarySheet.addRow(["Metric", "Value"]);
-  summarySheet.addRow(["Gross Income", analytics.summary.grossIncome]);
-  summarySheet.addRow([
-    "Cost of Goods Sold",
-    analytics.summary.costOfGoodsSold,
-  ]);
-  summarySheet.addRow(["Total Expenses", analytics.summary.totalExpenses]);
-  summarySheet.addRow(["Net Income", analytics.summary.netIncome]);
-  summarySheet.addRow([
-    "Total Volume Sold (kg)",
-    analytics.summary.totalVolumeKg,
-  ]);
-  summarySheet.addRow(["Total Orders", analytics.summary.totalOrders]);
+
+  const summaryRows = getSalesReportSummaryRows(analytics.summary || {});
+  summaryRows.forEach((row, index) => {
+    summarySheet.addRow([row.label, row.value]);
+    const cellRef = `B${index + 5}`;
+    summarySheet.getCell(cellRef).numFmt = row.isCurrency ? '"₱"#,##0.00' : '#,##0';
+  });
+
   summarySheet.addRow([]);
   summarySheet.addRow([
     "Formula",
-    "Net Income = Gross Income − Cost of Goods Sold − Total Expenses",
+    "Combined Net Income = Fully Paid Net Income + Expected Credit Net Income",
   ]);
-
-  ["B5", "B6", "B7", "B8"].forEach((cell) => {
-    summarySheet.getCell(cell).numFmt = '"₱"#,##0.00';
-  });
-  summarySheet.getCell("B9").numFmt = "#,##0.00";
 
   const chartMetrics =
     analytics.dailyMetrics.length > 0
@@ -121,10 +133,10 @@ export async function buildSalesReportExcelBuffer(
           {
             date: getManilaTodayISO(),
             orders: 0,
-            grossIncome: analytics.summary.grossIncome,
-            volumeKg: analytics.summary.totalVolumeKg,
-            totalExpenses: analytics.summary.totalExpenses,
-            netIncome: analytics.summary.netIncome,
+            grossIncome: analytics.summary.totalSalesRevenue ?? analytics.summary.grossIncome ?? analytics.summary.totalGrossRevenue ?? 0,
+            volumeKg: analytics.summary.totalVolumeKg ?? 0,
+            totalExpenses: analytics.summary.totalExpenses ?? 0,
+            netIncome: analytics.summary.netIncomeQualified ?? analytics.summary.netIncome ?? 0,
           },
         ];
 
@@ -132,7 +144,7 @@ export async function buildSalesReportExcelBuffer(
 
   const incomeChartConfig = buildLineChartConfig("Income Analysis", labels, [
     {
-      label: "Revenue",
+      label: "Sales Revenue",
       data: chartMetrics.map((row) => row.grossIncome),
       borderColor: "#10b981",
       fill: false,
@@ -144,7 +156,7 @@ export async function buildSalesReportExcelBuffer(
       fill: false,
     },
     {
-      label: "Net Income",
+      label: "Combined Net Income",
       data: chartMetrics.map((row) => row.netIncome),
       borderColor: "#8b5cf6",
       fill: false,
@@ -395,14 +407,8 @@ export async function buildSalesReportPdfBuffer(analytics, title, periodLabel, g
 
   // Summary metrics block
   const s = analytics.summary || {};
-  const metrics = [
-    ['Gross Income', s.grossIncome, true],
-    ['Net Income (Fully Paid & Credit Sale)', s.netIncome, true],
-    ['Net Income (Only Fully Paid Sales)', s.netIncomeWithoutCredit, true],
-    ['Total Credit Balance', s.totalCreditBalance, true],
-    ['Total Expenses', s.totalExpenses, true],
-    ['Total Orders', s.totalOrders, false],
-  ];
+  const summaryRows = getSalesReportSummaryRows(s);
+  const metrics = summaryRows.map((row) => [row.label, row.value, row.isCurrency]);
 
   const startY = doc.y;
   const leftColX = doc.x;
@@ -431,19 +437,19 @@ export async function buildSalesReportPdfBuffer(analytics, title, periodLabel, g
         {
           date: getManilaTodayISO(),
           orders: 0,
-          grossIncome: s.grossIncome || 0,
+          grossIncome: s.totalSalesRevenue ?? s.grossIncome ?? s.totalGrossRevenue ?? 0,
           volumeKg: s.totalVolumeKg || 0,
           totalExpenses: s.totalExpenses || 0,
-          netIncome: s.netIncome || 0,
-          netIncomeFullyPaid: s.netIncomeWithoutCredit || 0,
+          netIncome: s.netIncomeQualified ?? s.netIncome ?? 0,
+          netIncomeFullyPaid: s.netIncomeFullyPaid ?? s.netIncomeWithoutCredit ?? 0,
         },
       ];
 
   const incomeConfig = buildLineChartConfig('Income Analysis', labels.length ? labels : [formatDateLabel(paddedDailyMetrics[0].date)], [
-    { label: 'Revenue', data: paddedDailyMetrics.map((d) => d.grossIncome), borderColor: '#10b981', fill: false },
+    { label: 'Sales Revenue', data: paddedDailyMetrics.map((d) => d.grossIncome), borderColor: '#10b981', fill: false },
     { label: 'Expenses', data: paddedDailyMetrics.map((d) => d.totalExpenses), borderColor: '#ef4444', fill: false },
-    { label: 'Net Income', data: paddedDailyMetrics.map((d) => d.netIncome), borderColor: '#8b5cf6', fill: false },
-    { label: 'Net Income (Only Fully Paid Sales)', data: paddedDailyMetrics.map((d) => d.netIncomeFullyPaid || 0), borderColor: '#f59e0b', fill: false },
+    { label: 'Combined Net Income', data: paddedDailyMetrics.map((d) => d.netIncome), borderColor: '#8b5cf6', fill: false },
+    { label: 'Fully Paid Net Income', data: paddedDailyMetrics.map((d) => d.netIncomeFullyPaid || 0), borderColor: '#f59e0b', fill: false },
   ]);
 
   const ordersVolumeConfig = buildLineChartConfig('Orders & Volume Sold', labels.length ? labels : [formatDateLabel(paddedDailyMetrics[0].date)], [
