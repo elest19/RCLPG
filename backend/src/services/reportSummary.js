@@ -18,16 +18,47 @@ export function buildSalesReportSummary({
   totalCreditBalance = 0,
   fullyPaidCreditSalesRevenue = 0,
   fullyPaidCreditCostOfGoodsSold = 0,
+  actualCreditSalesRevenue,
+  expectedCreditSalesRevenue,
+  expectedCreditCostOfGoodsSold,
 } = {}) {
-  const totalSalesRevenue = Number(totalRevenue || 0);
   const salesCostOfGoods = Number(costOfGoodsSold || 0);
   const fullyPaidSalesRevenue = Number(totalFullyPaidSales || 0);
   const fullyPaidSalesCostOfGoods = Number(totalFullyPaidCostOfGoodsSold || 0);
+  const paidCreditSalesRevenue =
+    typeof actualCreditSalesRevenue === "number"
+      ? Number(actualCreditSalesRevenue || 0)
+      : undefined;
+  const projectedCreditSalesRevenue =
+    typeof expectedCreditSalesRevenue === "number"
+      ? Number(expectedCreditSalesRevenue || 0)
+      : undefined;
+  const projectedCreditCostOfGoodsSold =
+    typeof expectedCreditCostOfGoodsSold === "number"
+      ? Number(expectedCreditCostOfGoodsSold || 0)
+      : undefined;
+  const totalSalesRevenue = Number(
+    (
+      paidCreditSalesRevenue !== undefined
+        ? fullyPaidSalesRevenue + paidCreditSalesRevenue
+        : Number(totalRevenue || 0)
+    ).toFixed(2),
+  );
   const creditOnlySalesRevenue = Number(
-    (fullyPaidCreditSalesRevenue || totalSalesRevenue - fullyPaidSalesRevenue || 0).toFixed(2),
+    (
+      projectedCreditSalesRevenue ??
+      fullyPaidCreditSalesRevenue ??
+      totalSalesRevenue - fullyPaidSalesRevenue ??
+      0
+    ).toFixed(2),
   );
   const creditOnlyCostOfGoods = Number(
-    (fullyPaidCreditCostOfGoodsSold || salesCostOfGoods - fullyPaidSalesCostOfGoods || 0).toFixed(2),
+    (
+      projectedCreditCostOfGoodsSold ??
+      fullyPaidCreditCostOfGoodsSold ??
+      salesCostOfGoods - fullyPaidSalesCostOfGoods ??
+      0
+    ).toFixed(2),
   );
 
   // Calculations
@@ -38,7 +69,7 @@ export function buildSalesReportSummary({
 
   return {
     totalSalesRevenue: totalSalesRevenue, // Total Sales Revenue
-    //totalSalesRevenueFormula: `${formatCurrencyValue(fullyPaidSalesRevenue)} + ${formatCurrencyValue(qualifiedSales)}`,
+    totalSalesRevenueFormula: `${formatCurrencyValue(fullyPaidSalesRevenue)} + ${formatCurrencyValue(paidCreditSalesRevenue ?? 0)}`,
     netIncomeFullyPaid, //Fully Paid Net Income
     netIncomeQualified, //Total Net Income
     expectedNetIncome,

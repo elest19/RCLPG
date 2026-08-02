@@ -7,6 +7,15 @@ import {
   sqlManilaDate,
 } from "./timezone.js";
 
+function normalizeDateValue(value) {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 10);
+  }
+  const normalized = String(value).trim();
+  return normalized ? normalized : null;
+}
+
 export function buildReportDateFilter(quickFilter, startDate, endDate, dateColumn = 'sr.date_created') {
   const clauses = [];
   const params = [];
@@ -14,6 +23,8 @@ export function buildReportDateFilter(quickFilter, startDate, endDate, dateColum
 
   const manilaDate = sqlManilaDate(dateColumn);
   const columnExpr = dateColumn === 'e.date' ? 'e.date' : manilaDate;
+  const normalizedStartDate = normalizeDateValue(startDate);
+  const normalizedEndDate = normalizeDateValue(endDate);
 
   const addRangeClause = (startExpr, endExpr) => {
     clauses.push(`${columnExpr} BETWEEN ${startExpr} AND ${endExpr}`);
@@ -42,9 +53,9 @@ export function buildReportDateFilter(quickFilter, startDate, endDate, dateColum
   } else if (quickFilter === 'second_half') {
     const yearStart = getManilaYear();
     addRangeClause(`'${yearStart}-07-01'`, `'${yearStart}-12-31'`);
-  } else if (startDate && endDate) {
-    clauses.push(`${columnExpr} BETWEEN $${idx++} AND $${idx++}`);
-    params.push(startDate, endDate);
+  } else if (normalizedStartDate && normalizedEndDate) {
+    clauses.push(`${columnExpr} BETWEEN $${idx++}::date AND $${idx++}::date`);
+    params.push(normalizedStartDate, normalizedEndDate);
   }
 
   return {
@@ -61,6 +72,8 @@ export function buildExportDateFilter(period, startDate, endDate, dateColumn = '
 
   const manilaDate = sqlManilaDate(dateColumn);
   const columnExpr = dateColumn === 'e.date' ? 'e.date' : manilaDate;
+  const normalizedStartDate = normalizeDateValue(startDate);
+  const normalizedEndDate = normalizeDateValue(endDate);
 
   const addRangeClause = (startExpr, endExpr) => {
     clauses.push(`${columnExpr} BETWEEN ${startExpr} AND ${endExpr}`);
@@ -68,13 +81,13 @@ export function buildExportDateFilter(period, startDate, endDate, dateColumn = '
 
   if (period === 'today' || period === 'current_day') {
     addRangeClause(SQL_TODAY, SQL_TODAY);
-  } else if (period === 'daily' && startDate) {
-    clauses.push(`${columnExpr} = $${idx++}`);
-    params.push(startDate);
+  } else if (period === 'daily' && normalizedStartDate) {
+    clauses.push(`${columnExpr} = $${idx++}::date`);
+    params.push(normalizedStartDate);
   } else if (period === 'monthly') {
-    if (startDate) {
+    if (normalizedStartDate) {
       clauses.push(`DATE_TRUNC('month', ${columnExpr}) = DATE_TRUNC('month', $${idx++}::date)`);
-      params.push(startDate);
+      params.push(normalizedStartDate);
     } else {
       addRangeClause(
         `DATE_TRUNC('month', ${SQL_TODAY}::timestamp)::date`,
@@ -82,12 +95,12 @@ export function buildExportDateFilter(period, startDate, endDate, dateColumn = '
       );
     }
   } else if (period === 'weekly') {
-    if (startDate) {
+    if (normalizedStartDate) {
       addRangeClause(
         `DATE_TRUNC('week', $${idx++}::date)::date`,
         `(DATE_TRUNC('week', $${idx++}::date) + INTERVAL '6 days')::date`,
       );
-      params.push(startDate, startDate);
+      params.push(normalizedStartDate, normalizedStartDate);
     } else {
       addRangeClause(
         `DATE_TRUNC('week', ${SQL_TODAY}::timestamp)::date`,
@@ -95,18 +108,18 @@ export function buildExportDateFilter(period, startDate, endDate, dateColumn = '
       );
     }
   } else if ((period === 'first_half' || period === 'second_half')) {
-    const year = startDate ? new Date(`${startDate}T12:00:00`).getFullYear() : getManilaYear();
+    const year = normalizedStartDate ? new Date(`${normalizedStartDate}T12:00:00`).getFullYear() : getManilaYear();
     if (period === 'first_half') {
       addRangeClause(`'${year}-01-01'`, `'${year}-06-30'`);
     } else {
       addRangeClause(`'${year}-07-01'`, `'${year}-12-31'`);
     }
-  } else if (period === 'yearly' && startDate) {
+  } else if (period === 'yearly' && normalizedStartDate) {
     clauses.push(`DATE_TRUNC('year', ${columnExpr}) = DATE_TRUNC('year', $${idx++}::date)`);
-    params.push(startDate);
-  } else if (period === 'custom' && startDate && endDate) {
-    clauses.push(`${columnExpr} BETWEEN $${idx++} AND $${idx++}`);
-    params.push(startDate, endDate);
+    params.push(normalizedStartDate);
+  } else if (period === 'custom' && normalizedStartDate && normalizedEndDate) {
+    clauses.push(`${columnExpr} BETWEEN $${idx++}::date AND $${idx++}::date`);
+    params.push(normalizedStartDate, normalizedEndDate);
   }
 
   return { where: clauses.length ? `AND ${clauses.join(' AND ')}` : '', params, nextIdx: idx };

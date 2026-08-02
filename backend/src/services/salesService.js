@@ -13,8 +13,17 @@ import * as expenseService from "./expenseService.js";
 import { buildSalesReportSummary } from "./reportSummary.js";
 import { getSalesLogBalancePaid } from "../utils/salesLogEntries.js";
 
-function buildDateFilter(period, startDate, endDate) {
-  return buildExportDateFilter(period, startDate, endDate, "sr.date_created");
+function buildDateFilter(period, startDate, endDate, dateColumn = "sr.date_created") {
+  return buildExportDateFilter(period, startDate, endDate, dateColumn);
+}
+
+function shiftFilterPlaceholders(whereClause, params, offset = 0) {
+  if (!whereClause) {
+    return { whereClause: "", params };
+  }
+
+  const shiftedWhereClause = whereClause.replace(/\$(\d+)/g, (_, index) => `$${Number(index) + offset}`);
+  return { whereClause: shiftedWhereClause, params };
 }
 
 export async function listSales({
@@ -612,6 +621,8 @@ export async function getSalesReport({
   const saleParams = saleFilter.params;
   const paymentWhere = paymentFilter.where;
   const paymentParams = paymentFilter.params;
+  const paymentWhereForSummary = paymentWhere;
+const summaryParams = paymentParams;
 
   const saleBaseFrom = `
     FROM sales_records sr
@@ -647,15 +658,45 @@ export async function getSalesReport({
        COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NOT NULL AND GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0) <= 0 THEN p.initial_price * sr.sale_quantity ELSE 0 END), 0)::numeric AS fully_paid_credit_cogs,
        COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NULL OR GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0) <= 0 THEN sr.total_amount ELSE 0 END), 0)::numeric AS qualified_sales_revenue,
        COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NULL OR GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0) <= 0 THEN p.initial_price * sr.sale_quantity ELSE 0 END), 0)::numeric AS qualified_cogs,
+       COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NOT NULL THEN sr.total_amount ELSE 0 END), 0)::numeric AS projected_credit_sales_revenue,
+       COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NOT NULL THEN p.initial_price * sr.sale_quantity ELSE 0 END), 0)::numeric AS projected_credit_cogs,
        COALESCE(SUM(p.weight_class * sr.sale_quantity), 0)::numeric AS total_volume_kg,
        COUNT(*)::int AS total_orders
      ${saleBaseFrom}`,
     saleParams,
   );
 
+  const sql = `
+    SELECT
+        COALESCE(SUM(paid_amount),0)::numeric AS actual_credit_sales_revenue
+    FROM (
+        SELECT
+            ch.sales_id,
+            SUM(
+                CASE
+                    WHEN ch.payment_option='Credit'
+                    AND COALESCE(ch.balance_paid,0)>0
+                    THEN ch.balance_paid
+                    ELSE 0
+                END
+            )::numeric AS paid_amount
+        FROM credit_history ch
+        JOIN sales_records sr
+          ON sr.sale_id = ch.sales_id
+        WHERE sr.status IN ('Active','Finished')
+          AND ch.payment_option='Credit'
+          AND COALESCE(ch.balance_paid,0)>0
+          ${paymentWhereForSummary}
+        GROUP BY ch.sales_id
+    ) payment_totals
+  `;
+
+  const creditPaymentResult = await query(sql, summaryParams);
+
+
   const summary = summaryResult.rows[0];
-  const totalRevenue = Number(summary.total_gross_revenue);
   const costOfGoodsSold = Number(summary.total_cogs);
+  const totalFullyPaidSales = Number(summary.total_fully_paid_sales || 0);
   const totalFullyPaidCostOfGoodsSold = Number(summary.total_fully_paid_cogs);
   const totalOrders = summary.total_orders || 0;
   const totalExpenses = await expenseService.getTotalExpenses({
@@ -663,7 +704,6 @@ export async function getSalesReport({
     startDate,
     endDate,
   });
-
   const creditBalanceResult = await query(
     `SELECT
        COALESCE(SUM(GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0)), 0)::numeric AS total_credit_balance
@@ -685,14 +725,18 @@ export async function getSalesReport({
     saleParams,
   );
 
-  const totalFullyPaidSales = Number(summary.total_fully_paid_sales || 0);
   const totalCreditBalance = Number(
     creditBalanceResult.rows[0].total_credit_balance || 0,
   );
-  const grossIncome = totalRevenue;
+  const actualCreditSalesRevenue = Number(
+    creditPaymentResult.rows[0]?.actual_credit_sales_revenue || 0,
+  );
+  const grossIncome = Number(totalFullyPaidSales || 0) + actualCreditSalesRevenue;
+  const totalRevenue = grossIncome;
   const netIncome = Number(
     (grossIncome - costOfGoodsSold - totalExpenses).toFixed(2),
   );
+
   const reportSummary = buildSalesReportSummary({
     totalRevenue: grossIncome,
     costOfGoodsSold,
@@ -703,6 +747,9 @@ export async function getSalesReport({
     totalFullyPaidCostOfGoodsSold,
     fullyPaidCreditSalesRevenue: Number(summary.fully_paid_credit_sales || 0),
     fullyPaidCreditCostOfGoodsSold: Number(summary.fully_paid_credit_cogs || 0),
+    actualCreditSalesRevenue,
+    expectedCreditSalesRevenue: Number(summary.projected_credit_sales_revenue || 0),
+    expectedCreditCostOfGoodsSold: Number(summary.projected_credit_cogs || 0),
     qualifiedSalesRevenue: Number(summary.qualified_sales_revenue || 0),
     qualifiedCostOfGoodsSold: Number(summary.qualified_cogs || 0),
     totalCreditBalance,
@@ -1095,12 +1142,25 @@ function normalizeExportPeriod(period) {
 
 export async function getSalesReportAnalytics(period, startDate, endDate) {
   const exportPeriod = normalizeExportPeriod(period);
-  const saleFilter = buildDateFilter(exportPeriod, startDate, endDate, "sr.date_created");
-  const paymentFilter = buildDateFilter(exportPeriod, startDate, endDate, "ch.date_paid");
+  const saleFilter = buildDateFilter(
+    exportPeriod,
+    startDate,
+    endDate,
+    "sr.date_created",
+  );
+
+  const paymentFilter = buildDateFilter(
+    exportPeriod,
+    startDate,
+    endDate,
+    "ch.date_paid",
+  );
   const saleWhere = saleFilter.where;
   const saleParams = saleFilter.params;
   const paymentWhere = paymentFilter.where;
   const paymentParams = paymentFilter.params;
+  const paymentWhereForSummary = paymentWhere;
+  const summaryParams = paymentParams;  
 
   const saleBaseFrom = `
     FROM sales_records sr
@@ -1136,14 +1196,34 @@ export async function getSalesReportAnalytics(period, startDate, endDate) {
        COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NOT NULL AND GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0) <= 0 THEN p.initial_price * sr.sale_quantity ELSE 0 END), 0)::numeric AS fully_paid_credit_cogs,
        COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NULL OR GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0) <= 0 THEN sr.total_amount ELSE 0 END), 0)::numeric AS qualified_sales_revenue,
        COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NULL OR GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0) <= 0 THEN p.initial_price * sr.sale_quantity ELSE 0 END), 0)::numeric AS qualified_cogs,
+       COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NOT NULL THEN sr.total_amount ELSE 0 END), 0)::numeric AS projected_credit_sales_revenue,
+       COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NOT NULL THEN p.initial_price * sr.sale_quantity ELSE 0 END), 0)::numeric AS projected_credit_cogs,
        COALESCE(SUM(p.weight_class * sr.sale_quantity), 0)::numeric AS total_volume_kg,
        COUNT(*)::int AS total_orders
      ${saleBaseFrom}`,
     saleParams,
   );
 
+  const creditPaymentResult = await query(
+    `SELECT
+       COALESCE(SUM(paid_amount), 0)::numeric AS actual_credit_sales_revenue
+     FROM (
+       SELECT
+         ch.sales_id,
+         SUM(CASE WHEN ch.payment_option = 'Credit' AND COALESCE(ch.balance_paid, 0) > 0 THEN ch.balance_paid ELSE 0 END)::numeric AS paid_amount
+       FROM credit_history ch
+       JOIN sales_records sr ON sr.sale_id = ch.sales_id
+       WHERE sr.status IN ('Active', 'Finished')
+         AND ch.payment_option = 'Credit'
+         AND COALESCE(ch.balance_paid, 0) > 0
+         ${paymentWhereForSummary}
+       GROUP BY ch.sales_id
+     ) payment_totals`,
+    summaryParams,
+  );
+
+
   const summary = summaryResult.rows[0];
-  const grossIncome = Number(summary.total_gross_revenue);
   const costOfGoodsSold = Number(summary.total_cogs);
   const totalOrders = summary.total_orders || 0;
   const totalVolumeKg = Number(summary.total_volume_kg);
@@ -1152,7 +1232,6 @@ export async function getSalesReportAnalytics(period, startDate, endDate) {
     startDate,
     endDate,
   );
-
   const creditBalanceResult = await query(
     `SELECT
        COALESCE(SUM(GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0)), 0)::numeric AS total_credit_balance
@@ -1179,6 +1258,11 @@ export async function getSalesReportAnalytics(period, startDate, endDate) {
     creditBalanceResult.rows[0].total_credit_balance || 0,
   );
 
+  const actualCreditSalesRevenue = Number(
+    creditPaymentResult.rows[0]?.actual_credit_sales_revenue || 0,
+  );
+
+  const grossIncome = Number(totalFullyPaidSales || 0) + actualCreditSalesRevenue;
   const reportSummary = buildSalesReportSummary({
     totalRevenue: grossIncome,
     costOfGoodsSold,
@@ -1189,6 +1273,9 @@ export async function getSalesReportAnalytics(period, startDate, endDate) {
     totalFullyPaidCostOfGoodsSold: Number(summary.total_fully_paid_cogs),
     fullyPaidCreditSalesRevenue: Number(summary.fully_paid_credit_sales || 0),
     fullyPaidCreditCostOfGoodsSold: Number(summary.fully_paid_credit_cogs || 0),
+    actualCreditSalesRevenue,
+    expectedCreditSalesRevenue: Number(summary.projected_credit_sales_revenue || 0),
+    expectedCreditCostOfGoodsSold: Number(summary.projected_credit_cogs || 0),
     qualifiedSalesRevenue: Number(summary.qualified_sales_revenue || 0),
     qualifiedCostOfGoodsSold: Number(summary.qualified_cogs || 0),
     totalCreditBalance,

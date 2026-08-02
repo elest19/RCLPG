@@ -33,21 +33,21 @@ function formatPhpCurrency(value) {
   })}`;
 }
 
-function getSalesReportSummaryRows(summary = {}) {
-  const totalSalesRevenue = Number(summary.totalSalesRevenue ?? summary.grossIncome ?? summary.totalGrossRevenue ?? 0);
+export function getSalesReportSummaryRows(summary = {}) {
+  const totalSalesRevenue = Number(summary.totalSalesRevenue ?? 0);
+
+  const totalNetIncome = Number(summary.netIncomeQualified ?? summary.netIncome ?? 0);
   const fullyPaidNetIncome = Number(summary.netIncomeFullyPaid ?? summary.netIncomeWithoutCredit ?? 0);
-  const creditNetIncome = Number(summary.netIncomeCreditFullyPaid ?? summary.expectedNetIncome ?? 0);
-  const combinedNetIncome = Number(summary.netIncomeQualified ?? summary.netIncome ?? 0);
-  const expectedCreditNetIncome = Number(summary.expectedNetIncome ?? combinedNetIncome ?? 0);
+  const expectedCreditNetIncome = Number(summary.expectedNetIncome ?? 0);
   const totalCreditBalance = Number(summary.totalCreditBalance ?? 0);
   const totalExpenses = Number(summary.totalExpenses ?? 0);
   const totalOrders = Number(summary.totalOrders ?? 0);
 
   return [
     { label: "Total Sales Revenue", value: totalSalesRevenue, isCurrency: true },
-    { label: "Net Income on Combined Fully Paid and Credit Payment", value: combinedNetIncome, isCurrency: true },
-    { label: "Net Income on Fully Paid Payment", value: fullyPaidNetIncome, isCurrency: true },
-    { label: "Expected Income When All Credit is Paid", value: expectedCreditNetIncome, isCurrency: true },
+    { label: "Total Net Income", value: totalNetIncome, isCurrency: true },
+    { label: "Fully Paid Net Income", value: fullyPaidNetIncome, isCurrency: true },
+    { label: "Expected Credit Net Income", value: expectedCreditNetIncome, isCurrency: true },
     { label: "Remaining Credit Balance", value: totalCreditBalance, isCurrency: true },
     { label: "Total Expenses", value: totalExpenses, isCurrency: true },
     { label: "Total Orders", value: totalOrders, isCurrency: false },
@@ -437,7 +437,7 @@ export async function buildSalesReportPdfBuffer(analytics, title, periodLabel, g
         {
           date: getManilaTodayISO(),
           orders: 0,
-          grossIncome: s.totalSalesRevenue ?? s.grossIncome ?? s.totalGrossRevenue ?? 0,
+          grossIncome: s.totalSalesRevenue ?? 0,
           volumeKg: s.totalVolumeKg || 0,
           totalExpenses: s.totalExpenses || 0,
           netIncome: s.netIncomeQualified ?? s.netIncome ?? 0,
