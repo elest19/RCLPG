@@ -450,6 +450,14 @@ export default function SalesReportSection({ refreshKey = 0 }) {
                     />
                     <Line
                       type="monotone"
+                      dataKey="expectedCreditIncome"
+                      stroke="#14b8a6"
+                      strokeWidth={2}
+                      dot={{ r: 4 }}
+                      name="Expected Credit Income"
+                    />
+                    <Line
+                      type="monotone"
                       dataKey="netIncomeFullyPaid"
                       stroke="#f59e0b"
                       strokeWidth={2}
@@ -464,7 +472,7 @@ export default function SalesReportSection({ refreshKey = 0 }) {
             <div className="grid grid-cols-1 gap-4 mb-6">
               <Card withBorder padding="md" radius="md">
                 <Text fw={700} mb="md">
-                  Daily Metrics Comparison
+                  Metrics Comparison
                 </Text>
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={dailyMetrics}>
@@ -483,6 +491,7 @@ export default function SalesReportSection({ refreshKey = 0 }) {
                     <Tooltip
                       formatter={(value, name) => {
                         if (name === "grossIncome") return [formatCurrency(value), "Total Sales Revenue"];
+                        if (name === "expectedCreditIncome") return [formatCurrency(value), "Expected Credit Income"];
                         if (name === "netIncome") return [formatCurrency(value), "Net Income (All Sales)"];
                         if (name === "netIncomeFullyPaid")
                           return [formatCurrency(value), "Net Income (Fully Paid Payment)"];
@@ -498,6 +507,11 @@ export default function SalesReportSection({ refreshKey = 0 }) {
                       name="Total Sales Revenue"
                     />
                     <Bar dataKey="netIncome" fill="#8b5cf6" name="Net Income (All Sales)" />
+                    <Bar
+                      dataKey="expectedCreditIncome"
+                      fill="#14b8a6"
+                      name="Expected Credit Income"
+                    />
                     <Bar
                       dataKey="netIncomeFullyPaid"
                       fill="#f59e0b"

@@ -847,30 +847,22 @@ export async function getDailyMetrics({
     endDate,
     "sr.date_created",
   );
-  const paymentFilter = buildReportDateFilter(
-    quickFilter,
-    startDate,
-    endDate,
-    "ch.date_paid",
-  );
 
-  const paymentWhere = paymentFilter.where;
-  const paymentParams = paymentFilter.params;
   const saleWhere = saleFilter.where;
   const saleParams = saleFilter.params;
 
-  const dailyPayments = await query(
+  const dailySales = await query(
     `SELECT
-       ${sqlManilaDate("ch.date_paid")} AS date,
+       ${sqlManilaDate("sr.date_created")} AS date,
        COUNT(*)::int AS orders,
-       COALESCE(SUM(ch.balance_paid), 0)::numeric AS gross_income
-     FROM credit_history ch
-     JOIN sales_records sr ON sr.sale_id = ch.sales_id
+       COALESCE(SUM(sr.total_amount), 0)::numeric AS gross_income
+     FROM sales_records sr
+     JOIN lpg_products p ON p.product_id = sr.product_id
      WHERE sr.status IN ('Active', 'Finished')
-       ${paymentWhere}
-     GROUP BY ${sqlManilaDate("ch.date_paid")}
-     ORDER BY ${sqlManilaDate("ch.date_paid")} ASC`,
-    paymentParams,
+       ${saleWhere}
+     GROUP BY ${sqlManilaDate("sr.date_created")}
+     ORDER BY ${sqlManilaDate("sr.date_created")} ASC`,
+    saleParams,
   );
 
   const dailyOrders = await query(
@@ -931,8 +923,8 @@ export async function getDailyMetrics({
     expenseByDate.map((row) => [String(row.date), row.totalExpenses]),
   );
 
-  const paymentMap = new Map(
-    dailyPayments.rows.map((row) => [String(row.date), row]),
+  const dailySalesMap = new Map(
+    dailySales.rows.map((row) => [String(row.date), row]),
   );
   const orderMap = new Map(
     dailyOrders.rows.map((row) => [String(row.date), row]),
@@ -945,7 +937,7 @@ export async function getDailyMetrics({
   );
 
   const allDates = new Set([
-    ...dailyPayments.rows.map((row) => String(row.date)),
+    ...dailySales.rows.map((row) => String(row.date)),
     ...dailyOrders.rows.map((row) => String(row.date)),
     ...cogsByDate.rows.map((row) => String(row.date)),
     ...fullyPaidByDate.rows.map((row) => String(row.date)),
@@ -955,7 +947,7 @@ export async function getDailyMetrics({
   return Array.from(allDates)
     .sort((a, b) => new Date(a) - new Date(b))
     .map((date) => {
-      const payment = paymentMap.get(date) || { orders: 0, gross_income: 0 };
+      const dailySale = dailySalesMap.get(date) || { orders: 0, gross_income: 0 };
       const orderRow = orderMap.get(date) || { orders: 0, volume_kg: 0 };
       const cogs = cogsMap.get(date) || { cogs: 0, volume_kg: 0 };
       const fullyPaid = fullyPaidMap.get(date) || {
@@ -963,10 +955,19 @@ export async function getDailyMetrics({
         fully_paid_cogs: 0,
       };
       const dailyExpenses = expenseMap.get(date) || 0;
-      const grossIncome = Number(payment.gross_income);
+      const grossIncome = Number(dailySale.gross_income);
       const costOfGoodsSold = Number(cogs.cogs);
       const fullyPaidGrossIncome = Number(fullyPaid.fully_paid_gross_income);
-      const fullyPaidCogs = Number(fullyPaid.fully_Fpaid_cogs);
+      const fullyPaidCogs = Number(fullyPaid.fully_paid_cogs);
+      const creditOnlySalesRevenue = Number(
+        (grossIncome - fullyPaidGrossIncome).toFixed(2),
+      );
+      const creditOnlyCostOfGoods = Number(
+        (costOfGoodsSold - fullyPaidCogs).toFixed(2),
+      );
+      const netIncomeFullyPaid = Number(
+        (fullyPaidGrossIncome - fullyPaidCogs - dailyExpenses).toFixed(2),
+      );
       return {
         date,
         orders: orderRow.orders,
@@ -974,10 +975,14 @@ export async function getDailyMetrics({
         costOfGoodsSold,
         volumeKg: Number(orderRow.volume_kg),
         totalExpenses: dailyExpenses,
-        netIncome: Number((grossIncome - costOfGoodsSold - dailyExpenses).toFixed(2)),
-        netIncomeFullyPaid: Number(
-          (fullyPaidGrossIncome - fullyPaidCogs - dailyExpenses).toFixed(2),
+        netIncome: Number(
+          (netIncomeFullyPaid + (creditOnlySalesRevenue - (creditOnlyCostOfGoods + dailyExpenses))).toFixed(2),
         ),
+        expectedCreditIncome: Number(
+          (creditOnlySalesRevenue - (creditOnlyCostOfGoods + dailyExpenses)).toFixed(2),
+        ),
+        creditSales: Number(creditOnlySalesRevenue.toFixed(2)),
+        netIncomeFullyPaid,
       };
     });
 }
