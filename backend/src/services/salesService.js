@@ -1013,7 +1013,7 @@ export async function getDailyMetrics({
         (costOfGoodsSold - fullyPaidCogs).toFixed(2),
       );
       const netIncomeFullyPaid = Number(
-        (fullyPaidGrossIncome - fullyPaidCogs - dailyExpenses).toFixed(2),
+        (fullyPaidGrossIncome - fullyPaidCogs).toFixed(2),
       );
       return {
         date,
@@ -1023,10 +1023,10 @@ export async function getDailyMetrics({
         volumeKg: Number(orderRow.volume_kg),
         totalExpenses: dailyExpenses,
         netIncome: Number(
-          (netIncomeFullyPaid + (creditOnlySalesRevenue - (creditOnlyCostOfGoods + dailyExpenses))).toFixed(2),
+          (netIncomeFullyPaid + (creditOnlySalesRevenue - creditOnlyCostOfGoods)).toFixed(2),
         ),
         expectedCreditIncome: Number(
-          (creditOnlySalesRevenue - (creditOnlyCostOfGoods + dailyExpenses)).toFixed(2),
+          (creditOnlySalesRevenue - creditOnlyCostOfGoods).toFixed(2),
         ),
         creditSales: Number(creditOnlySalesRevenue.toFixed(2)),
         netIncomeFullyPaid,

@@ -62,14 +62,13 @@ export function buildSalesReportSummary({
   );
 
   // Calculations
-  const netIncomeFullyPaid = Number((fullyPaidSalesRevenue - (fullyPaidSalesCostOfGoods + totalExpenses)).toFixed(2)); // Fully Paid Net Income Formula
-  const expectedNetIncome = Number((creditOnlySalesRevenue - (creditOnlyCostOfGoods + totalExpenses)).toFixed(2)); // Expected Credit Net Income Formula
-  const netIncomeQualified = Number((netIncomeFullyPaid + expectedNetIncome).toFixed(2)); // Total Net Income Formula
+  const netIncomeFullyPaid = Number((fullyPaidSalesRevenue - (fullyPaidSalesCostOfGoods)).toFixed(2)); // Fully Paid Net Income Formula
+  const expectedNetIncome = Number((creditOnlySalesRevenue - (creditOnlyCostOfGoods)).toFixed(2)); // Expected Credit Net Income Formula
+  const netIncomeQualified = Number((netIncomeFullyPaid + expectedNetIncome - totalExpenses).toFixed(2)); // Total Net Income Formula
   const creditBalance = Number(totalCreditBalance || 0); // Remaining Credit Balance
 
   return {
     totalSalesRevenue: totalSalesRevenue, // Total Sales Revenue
-    totalSalesRevenueFormula: `${formatCurrencyValue(fullyPaidSalesRevenue)} + ${formatCurrencyValue(paidCreditSalesRevenue ?? 0)}`,
     netIncomeFullyPaid, //Fully Paid Net Income
     netIncomeQualified, //Total Net Income
     expectedNetIncome,
@@ -78,9 +77,9 @@ export function buildSalesReportSummary({
     creditOnlyCostOfGoods, // Credit-only cost of goods
 
     //Cards
-    netIncomeQualifiedFormula: `Fully Paid + Expected Credit Net Income`, // Total Net Income
-    netIncomeFullyPaidFormula: `${formatCurrencyValue(fullyPaidSalesRevenue)} - (${formatCurrencyValue(fullyPaidSalesCostOfGoods)} + ${formatCurrencyValue(totalExpenses)})`, // Fully Paid Net Income
-    expectedNetIncomeFormula: `${formatCurrencyValue(creditOnlySalesRevenue)} - (${formatCurrencyValue(creditOnlyCostOfGoods)} + ${formatCurrencyValue(totalExpenses)})`, // Expected Credit Net Income
+    netIncomeQualifiedFormula: `(${formatCurrencyValue(fullyPaidSalesRevenue)} + ${formatCurrencyValue(expectedNetIncome)}) - ${formatCurrencyValue(totalExpenses)}`, // Total Net Income
+    netIncomeFullyPaidFormula: `${formatCurrencyValue(fullyPaidSalesRevenue)} - ${formatCurrencyValue(fullyPaidSalesCostOfGoods)}`, // Fully Paid Net Income
+    expectedNetIncomeFormula: `${formatCurrencyValue(creditOnlySalesRevenue)} - ${formatCurrencyValue(creditOnlyCostOfGoods)}`, // Expected Credit Net Income
     totalCreditBalance: creditBalance, // Remaining Credit Balance
     totalExpenses: Number(totalExpenses || 0), // Expenses
     totalOrders: Number(totalOrders || 0), // Total Orders

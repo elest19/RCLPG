@@ -314,7 +314,7 @@ export default function SalesReportSection({ refreshKey = 0 }) {
               label="Fully Paid Net Income"
               value={formatCurrency(summary?.netIncomeFullyPaid)}
               icon={<NetIncomeIcon />}
-              tone="text-indigo-600"
+              tone="text-yellow-600"
               formula={summary?.netIncomeFullyPaidFormula}
             />
             <MetricCard
@@ -500,22 +500,26 @@ export default function SalesReportSection({ refreshKey = 0 }) {
                       }}
                       labelFormatter={(label) => formatDateLocale(label)}
                     />
-                    <Legend />
+                    <Legend itemSorter={null} />
                     <Bar
                       dataKey="grossIncome"
                       fill="#10b981"
                       name="Total Sales Revenue"
                     />
-                    <Bar dataKey="netIncome" fill="#8b5cf6" name="Net Income (All Sales)" />
-                    <Bar
-                      dataKey="expectedCreditIncome"
-                      fill="#14b8a6"
-                      name="Expected Credit Income"
+                    <Bar 
+                      dataKey="netIncome" 
+                      fill="#498CE4" 
+                      name="Net Income (All Sales)" 
                     />
                     <Bar
                       dataKey="netIncomeFullyPaid"
                       fill="#f59e0b"
                       name="Net Income (Fully Paid Payment)"
+                    />
+                    <Bar
+                      dataKey="expectedCreditIncome"
+                      fill="#5D3FD3"
+                      name="Expected Credit Income"
                     />
                   </BarChart>
                 </ResponsiveContainer>
