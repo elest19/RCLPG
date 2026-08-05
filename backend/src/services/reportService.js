@@ -491,7 +491,7 @@ export async function buildSalesReportPdfBuffer(analytics, title, periodLabel, g
   return endPromise;
 }
 
-export async function buildSalesLogPdfBuffer(rows, title, generatedBy) {
+export async function buildSalesLogPdfBuffer(rows, title, generatedBy, summary = {}) {
   const doc = new PDFDocument({ margin: 40, size: 'A4', layout: 'landscape' });
   const chunks = [];
   doc.on('data', (c) => chunks.push(c));
@@ -583,6 +583,24 @@ export async function buildSalesLogPdfBuffer(rows, title, generatedBy) {
 
     const lineHeight = 12;
     doc.y = rowStartY + lineHeight;
+  }
+
+  if (summary && Object.keys(summary).length > 0) {
+    if (doc.y > doc.page.height - doc.page.margins.bottom - 80) {
+      doc.addPage();
+    }
+    doc.moveDown(1);
+    doc.font('Helvetica-Bold').fontSize(10);
+    doc.text('Summary Totals', doc.page.margins.left - 8, doc.y, { align: 'left' });
+    doc.moveDown(0.2);
+    doc.font('Helvetica').fontSize(9);
+    const totalSalesRevenue = Number(summary.totalSalesRevenue ?? 0);
+    const netIncome = Number(summary.netIncomeQualified ?? summary.netIncome ?? 0);
+    const salesExpenses = Number(summary.totalExpenses ?? 0);
+    const startX = doc.page.margins.left - 8;
+    doc.text(`Total Sales Revenue: ${formatPhpCurrency(totalSalesRevenue)}`, startX, doc.y, { align: 'left' });
+    doc.text(`Total Net Income: ${formatPhpCurrency(netIncome)}`, startX, doc.y + 5, { align: 'left' });
+    doc.text(`Total Sales Expenses: ${formatPhpCurrency(salesExpenses)}`, startX, doc.y + 5, { align: 'left' });
   }
 
   doc.end();

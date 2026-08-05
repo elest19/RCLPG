@@ -10,7 +10,10 @@ import * as productService from "./productService.js";
 import * as customerService from "./customerService.js";
 import * as creditService from "./creditService.js";
 import * as expenseService from "./expenseService.js";
-import { buildSalesReportSummary } from "./reportSummary.js";
+import {
+  buildSalesReportSummary,
+  calculateNetIncomeComponents,
+} from "./reportSummary.js";
 import { getSalesLogBalancePaid } from "../utils/salesLogEntries.js";
 
 function buildDateFilter(period, startDate, endDate, dateColumn = "sr.date_created") {
@@ -894,9 +897,17 @@ export async function getDailyMetrics({
     endDate,
     "sr.date_created",
   );
+  const paymentFilter = buildReportDateFilter(
+    quickFilter,
+    startDate,
+    endDate,
+    "ch.date_paid",
+  );
 
   const saleWhere = saleFilter.where;
   const saleParams = saleFilter.params;
+  const paymentWhere = paymentFilter.where;
+  const paymentParams = paymentFilter.params;
 
   const dailySales = await query(
     `SELECT
@@ -961,6 +972,41 @@ export async function getDailyMetrics({
     saleParams,
   );
 
+  const creditPaymentsByDate = await query(
+    `SELECT
+       ${sqlManilaDate("ch.date_paid")} AS date,
+       COALESCE(SUM(ch.balance_paid), 0)::numeric AS actual_credit_sales_revenue
+     FROM credit_history ch
+     JOIN sales_records sr ON sr.sale_id = ch.sales_id
+     WHERE sr.status IN ('Active', 'Finished')
+       ${paymentWhere}
+       AND ch.payment_option = 'Credit'
+       AND COALESCE(ch.balance_paid, 0) > 0
+     GROUP BY ${sqlManilaDate("ch.date_paid")}
+     ORDER BY ${sqlManilaDate("ch.date_paid")} ASC`,
+    paymentParams,
+  );
+
+  const projectedCreditByDate = await query(
+    `SELECT
+       ${sqlManilaDate("sr.date_created")} AS date,
+       COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NOT NULL THEN sr.total_amount ELSE 0 END), 0)::numeric AS projected_credit_sales_revenue,
+       COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NOT NULL THEN p.initial_price * sr.sale_quantity ELSE 0 END), 0)::numeric AS projected_credit_cogs
+     FROM sales_records sr
+     JOIN lpg_products p ON p.product_id = sr.product_id
+     LEFT JOIN (
+       SELECT sales_id
+       FROM credit_history
+       WHERE payment_option = 'Credit'
+       GROUP BY sales_id
+     ) credit_sales ON credit_sales.sales_id = sr.sale_id
+     WHERE sr.status IN ('Active', 'Finished')
+       ${saleWhere}
+     GROUP BY ${sqlManilaDate("sr.date_created")}
+     ORDER BY ${sqlManilaDate("sr.date_created")} ASC`,
+    saleParams,
+  );
+
   const expenseByDate = await expenseService.getDailyExpenseTotals({
     quickFilter,
     startDate,
@@ -982,12 +1028,20 @@ export async function getDailyMetrics({
   const fullyPaidMap = new Map(
     fullyPaidByDate.rows.map((row) => [String(row.date), row]),
   );
+  const creditPaymentsMap = new Map(
+    creditPaymentsByDate.rows.map((row) => [String(row.date), row]),
+  );
+  const projectedCreditMap = new Map(
+    projectedCreditByDate.rows.map((row) => [String(row.date), row]),
+  );
 
   const allDates = new Set([
     ...dailySales.rows.map((row) => String(row.date)),
     ...dailyOrders.rows.map((row) => String(row.date)),
     ...cogsByDate.rows.map((row) => String(row.date)),
     ...fullyPaidByDate.rows.map((row) => String(row.date)),
+    ...creditPaymentsByDate.rows.map((row) => String(row.date)),
+    ...projectedCreditByDate.rows.map((row) => String(row.date)),
     ...expenseByDate.map((row) => String(row.date)),
   ]);
 
@@ -1001,20 +1055,39 @@ export async function getDailyMetrics({
         fully_paid_gross_income: 0,
         fully_paid_cogs: 0,
       };
+      const creditPayment = creditPaymentsMap.get(date) || {
+        actual_credit_sales_revenue: 0,
+      };
+      const projectedCredit = projectedCreditMap.get(date) || {
+        projected_credit_sales_revenue: 0,
+        projected_credit_cogs: 0,
+      };
       const dailyExpenses = expenseMap.get(date) || 0;
-      const grossIncome = Number(dailySale.gross_income);
-      const costOfGoodsSold = Number(cogs.cogs);
       const fullyPaidGrossIncome = Number(fullyPaid.fully_paid_gross_income);
+      const actualCreditSalesRevenue = Number(
+        creditPayment.actual_credit_sales_revenue || 0,
+      );
+      const grossIncome = Number(
+        (fullyPaidGrossIncome + actualCreditSalesRevenue).toFixed(2),
+      );
+      const costOfGoodsSold = Number(cogs.cogs);
       const fullyPaidCogs = Number(fullyPaid.fully_paid_cogs);
-      const creditOnlySalesRevenue = Number(
-        (grossIncome - fullyPaidGrossIncome).toFixed(2),
+      const projectedCreditSalesRevenue = Number(
+        projectedCredit.projected_credit_sales_revenue ?? 0,
       );
-      const creditOnlyCostOfGoods = Number(
-        (costOfGoodsSold - fullyPaidCogs).toFixed(2),
+      const projectedCreditCogs = Number(
+        projectedCredit.projected_credit_cogs ?? 0,
       );
-      const netIncomeFullyPaid = Number(
-        (fullyPaidGrossIncome - fullyPaidCogs).toFixed(2),
-      );
+      const creditOnlySalesRevenue = Number(projectedCreditSalesRevenue.toFixed(2));
+      const creditOnlyCostOfGoods = Number(projectedCreditCogs.toFixed(2));
+      const { netIncomeFullyPaid, expectedNetIncome, netIncomeQualified } =
+        calculateNetIncomeComponents({
+          fullyPaidGrossIncome,
+          fullyPaidCogs,
+          expectedCreditSalesRevenue: creditOnlySalesRevenue,
+          expectedCreditCostOfGoods: creditOnlyCostOfGoods,
+          totalExpenses: dailyExpenses,
+        });
       return {
         date,
         orders: orderRow.orders,
@@ -1022,12 +1095,8 @@ export async function getDailyMetrics({
         costOfGoodsSold,
         volumeKg: Number(orderRow.volume_kg),
         totalExpenses: dailyExpenses,
-        netIncome: Number(
-          (netIncomeFullyPaid + (creditOnlySalesRevenue - creditOnlyCostOfGoods)).toFixed(2),
-        ),
-        expectedCreditIncome: Number(
-          (creditOnlySalesRevenue - creditOnlyCostOfGoods).toFixed(2),
-        ),
+        netIncome: netIncomeQualified,
+        expectedCreditIncome: expectedNetIncome,
         creditSales: Number(creditOnlySalesRevenue.toFixed(2)),
         netIncomeFullyPaid,
       };

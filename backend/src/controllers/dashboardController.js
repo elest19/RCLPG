@@ -117,9 +117,14 @@ export const downloadSalesLog = [
         ? await salesService.getSalesLogPdfRows(exportPeriod, startDate, endDate)
         : await salesService.getReportRows(exportPeriod, startDate, endDate);
 
+    const summary =
+      format === 'pdf' || !format
+        ? (await salesService.getSalesReportAnalytics(exportPeriod, startDate, endDate)).summary
+        : {};
+
     const title = 'RCLPG Customer & Sales Log';
     if (format === 'pdf' || !format) {
-      const buffer = await reportService.buildSalesLogPdfBuffer(rows, title, req.user?.name);
+      const buffer = await reportService.buildSalesLogPdfBuffer(rows, title, req.user?.name, summary);
       const filenameBase = `RCLPG_Sales_Log_${period}_${Date.now()}`;
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${filenameBase}.pdf"`);

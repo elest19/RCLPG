@@ -7,6 +7,34 @@ function formatCurrencyValue(value) {
   }).format(Number(value || 0));
 }
 
+export function calculateNetIncomeComponents({
+  fullyPaidGrossIncome = 0,
+  fullyPaidCogs = 0,
+  expectedCreditSalesRevenue = 0,
+  expectedCreditCostOfGoods = 0,
+  totalExpenses = 0,
+} = {}) {
+  const fullyPaidRevenue = Number(fullyPaidGrossIncome || 0);
+  const fullyPaidCost = Number(fullyPaidCogs || 0);
+  const projectedCreditRevenue = Number(expectedCreditSalesRevenue || 0);
+  const projectedCreditCost = Number(expectedCreditCostOfGoods || 0);
+  const expenses = Number(totalExpenses || 0);
+
+  const netIncomeFullyPaid = Number((fullyPaidRevenue - fullyPaidCost).toFixed(2));
+  const expectedNetIncome = Number(
+    (projectedCreditRevenue - projectedCreditCost).toFixed(2),
+  );
+  const netIncomeQualified = Number(
+    (netIncomeFullyPaid + expectedNetIncome - expenses).toFixed(2),
+  );
+
+  return {
+    netIncomeFullyPaid,
+    expectedNetIncome,
+    netIncomeQualified,
+  };
+}
+
 export function buildSalesReportSummary({
   totalRevenue = 0,
   costOfGoodsSold = 0,
@@ -62,9 +90,14 @@ export function buildSalesReportSummary({
   );
 
   // Calculations
-  const netIncomeFullyPaid = Number((fullyPaidSalesRevenue - (fullyPaidSalesCostOfGoods)).toFixed(2)); // Fully Paid Net Income Formula
-  const expectedNetIncome = Number((creditOnlySalesRevenue - (creditOnlyCostOfGoods)).toFixed(2)); // Expected Credit Net Income Formula
-  const netIncomeQualified = Number((netIncomeFullyPaid + expectedNetIncome - totalExpenses).toFixed(2)); // Total Net Income Formula
+  const { netIncomeFullyPaid, expectedNetIncome, netIncomeQualified } =
+    calculateNetIncomeComponents({
+      fullyPaidGrossIncome: fullyPaidSalesRevenue,
+      fullyPaidCogs: fullyPaidSalesCostOfGoods,
+      expectedCreditSalesRevenue: creditOnlySalesRevenue,
+      expectedCreditCostOfGoods: creditOnlyCostOfGoods,
+      totalExpenses,
+    });
   const creditBalance = Number(totalCreditBalance || 0); // Remaining Credit Balance
 
   return {
