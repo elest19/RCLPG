@@ -491,9 +491,13 @@ export async function buildSalesReportPdfBuffer(analytics, title, periodLabel, g
   return endPromise;
 }
 
-export async function buildSalesLogPdfBuffer(rows, title, generatedBy, summary = {}) {
+export async function buildSalesLogPdfBuffer(rows, title, generatedBy, analytics = {}) {
   const doc = new PDFDocument({ margin: 40, size: 'A4', layout: 'landscape' });
   const chunks = [];
+  const summary = analytics.summary || {};
+  const productMix = analytics.productMix || [];
+  const totalUnitsSold = Number(analytics.totalUnitsSold ?? productMix.reduce((sum, item) => sum + Number(item.unitsSold || 0), 0));
+
   doc.on('data', (c) => chunks.push(c));
   const endPromise = new Promise((resolve, reject) => {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -585,22 +589,70 @@ export async function buildSalesLogPdfBuffer(rows, title, generatedBy, summary =
     doc.y = rowStartY + lineHeight;
   }
 
-  if (summary && Object.keys(summary).length > 0) {
-    if (doc.y > doc.page.height - doc.page.margins.bottom - 80) {
+  if ((summary && Object.keys(summary).length > 0) || productMix.length > 0) {
+    if (doc.y > doc.page.height - doc.page.margins.bottom - 160) {
       doc.addPage();
     }
-    doc.moveDown(1);
-    doc.font('Helvetica-Bold').fontSize(10);
-    doc.text('Summary Totals', doc.page.margins.left - 8, doc.y, { align: 'left' });
-    doc.moveDown(0.2);
-    doc.font('Helvetica').fontSize(9);
-    const totalSalesRevenue = Number(summary.totalSalesRevenue ?? 0);
-    const netIncome = Number(summary.netIncomeQualified ?? summary.netIncome ?? 0);
-    const salesExpenses = Number(summary.totalExpenses ?? 0);
-    const startX = doc.page.margins.left - 8;
-    doc.text(`Total Sales Revenue: ${formatPhpCurrency(totalSalesRevenue)}`, startX, doc.y, { align: 'left' });
-    doc.text(`Total Net Income: ${formatPhpCurrency(netIncome)}`, startX, doc.y + 5, { align: 'left' });
-    doc.text(`Total Sales Expenses: ${formatPhpCurrency(salesExpenses)}`, startX, doc.y + 5, { align: 'left' });
+
+    const sectionStartY = doc.y + 10;
+    const summaryX = doc.page.margins.left;
+    const mixX = doc.page.margins.left + 340;
+    const summaryWidth = 260;
+    const mixWidth = 220;
+
+    if (summary && Object.keys(summary).length > 0) {
+      doc.font('Helvetica-Bold').fontSize(10);
+      doc.text('Summary Totals', summaryX, sectionStartY, { width: summaryWidth });
+
+      doc.font('Helvetica').fontSize(8.5);
+      const totalSalesRevenue = Number(summary.totalSalesRevenue ?? 0);
+      const netIncome = Number(summary.netIncomeQualified ?? summary.netIncome ?? 0);
+      const salesExpenses = Number(summary.totalExpenses ?? 0);
+      const expectedCreditIncome = Number(summary.expectedNetIncome ?? 0);
+      const remainingCreditBalance = Number(summary.totalCreditBalance ?? 0);
+      const fleetNetIncome = Number(summary.netIncomeFullyPaid ?? summary.netIncomeWithoutCredit ?? 0);
+      const totalNetWithoutExpenses = netIncome + salesExpenses;
+
+      const summaryItems = [
+        ['Total Sales Revenue', formatPhpCurrency(totalSalesRevenue)],
+        ['Total Net Income', formatPhpCurrency(netIncome)],
+        ['Net Without Expenses', formatPhpCurrency(totalNetWithoutExpenses)],
+        ['Fully Paid Net Income', formatPhpCurrency(fleetNetIncome)],
+        ['Expected Credit Income', formatPhpCurrency(expectedCreditIncome)],
+        ['Remaining Credit Balance', formatPhpCurrency(remainingCreditBalance)],
+        ['Total Sales Expenses', formatPhpCurrency(salesExpenses)],
+      ];
+
+      let summaryY = sectionStartY + 18;
+      summaryItems.forEach(([label, value]) => {
+        doc.text(`${label}:`, summaryX, summaryY, { width: summaryWidth * 0.62 });
+        doc.text(String(value), summaryX + summaryWidth * 0.62, summaryY, { width: summaryWidth * 0.38, align: 'right' });
+        summaryY += 14;
+      });
+    }
+
+    if (productMix.length > 0) {
+      doc.font('Helvetica-Bold').fontSize(10);
+      doc.text('Product & Inventory Mix', mixX, sectionStartY, { width: mixWidth });
+
+      doc.font('Helvetica-Bold').fontSize(8);
+      doc.text('Weight Class', mixX, sectionStartY + 18, { width: mixWidth * 0.6 });
+      doc.text('Units Sold', mixX + mixWidth * 0.6, sectionStartY + 18, { width: mixWidth * 0.4, align: 'right' });
+
+      doc.font('Helvetica').fontSize(8);
+      let mixY = sectionStartY + 32;
+      productMix.forEach((item) => {
+        const weightClass = Number(item.weightClass ?? 0);
+        const unitsSold = Number(item.unitsSold ?? 0);
+        doc.text(`${weightClass.toFixed(weightClass % 1 === 0 ? 0 : 1)} kg`, mixX, mixY, { width: mixWidth * 0.6 });
+        doc.text(String(unitsSold), mixX + mixWidth * 0.6, mixY, { width: mixWidth * 0.4, align: 'right' });
+        mixY += 12;
+      });
+
+      doc.font('Helvetica-Bold').fontSize(8);
+      doc.text('Total Units Sold', mixX, mixY + 4, { width: mixWidth * 0.6 });
+      doc.text(String(totalUnitsSold), mixX + mixWidth * 0.6, mixY + 4, { width: mixWidth * 0.4, align: 'right' });
+    }
   }
 
   doc.end();

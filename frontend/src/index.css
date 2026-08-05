@@ -5,3 +5,10 @@
 body {
   @apply bg-slate-50 text-slate-700 antialiased;
 }
+
+/* Product select: light red background and black text on hover/focus/selected */
+select#product option:hover {
+  background-color: #FEE2E2 !important;
+  color: #000000 !important;
+}
+

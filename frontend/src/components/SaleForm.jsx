@@ -26,16 +26,34 @@ function formatWeightClassLabel(weightClass) {
   return `Weight - ${displayValue} kg`;
 }
 
+function getWeightClassColor(weightClass) {
+  switch (Number(weightClass)) {
+    case 2.7:
+      return "#FFFF00";
+    case 5:
+      return "#FF00FF";
+    case 11:
+      return "#1E90FF";
+    case 22:
+      return "#7CFC00";
+    case 50:
+      return "#FF6347";
+    default:
+      return "#334155";
+  }
+}
+
 function productOptionLabel(product) {
   const createdAtLabel = formatDateLabel(product.created_at);
+  const weightLabel = formatWeightClassLabel(product.weight_class);
 
   if (Number(product.stock_quantity) === 0) {
-    return `OUT OF STOCK! - ${createdAtLabel}`;
+    return `${weightLabel} - OUT OF STOCK! - ${createdAtLabel}`;
   }
 
   const isLowStock = product.health_indicator === "Low Stock";
   const healthLabel = isLowStock ? "LOW!" : "";
-  return `${healthLabel} Stock: ${product.stock_quantity} - ${createdAtLabel}`;
+  return `${weightLabel} - ${healthLabel} Stock: ${product.stock_quantity} - ${createdAtLabel}`;
 }
 
 export default function SaleForm({
@@ -134,6 +152,7 @@ export default function SaleForm({
       groupItems.push({
         value: product.product_id,
         label: productOptionLabel(product),
+        weightColor: getWeightClassColor(product.weight_class),
       });
       grouped.set(groupLabel, groupItems);
     });
@@ -436,15 +455,38 @@ export default function SaleForm({
               <option value="" disabled>
                 Select a batch
               </option>
-              {groupedProductOptions.map(({ groupLabel, options }) => (
-                <optgroup key={groupLabel} label={groupLabel}>
-                  {options.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
+              {groupedProductOptions.map(({ groupLabel, options }) => {
+                const headerColor = options[0]?.weightColor || "#334155";
+                return (
+                  <>
+                    <option
+                      key={`${groupLabel}-header`}
+                      disabled
+                      style={{
+                        backgroundColor: headerColor,
+                        color: "#0f172a",
+                        fontWeight: 700,
+                        paddingLeft: "0.5rem",
+                      }}
+                    >
+                      {groupLabel}
                     </option>
-                  ))}
-                </optgroup>
-              ))}
+                    {options.map((option) => (
+                      <option
+                        key={option.value}
+                        value={option.value}
+                        style={{
+                          backgroundColor: option.weightColor,
+                          color: "#0f172a",
+                          fontWeight: 500,
+                        }}
+                      >
+                        {option.label}
+                      </option>
+                    ))}
+                  </>
+                );
+              })}
             </select>
           </div>
         </div>

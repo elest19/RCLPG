@@ -15,6 +15,7 @@ import {
   calculateNetIncomeComponents,
 } from "./reportSummary.js";
 import { getSalesLogBalancePaid } from "../utils/salesLogEntries.js";
+import { WEIGHT_CLASSES } from "../utils/constants.js";
 
 function buildDateFilter(period, startDate, endDate, dateColumn = "sr.date_created") {
   return buildExportDateFilter(period, startDate, endDate, dateColumn);
@@ -1428,6 +1429,25 @@ export async function getSalesReportAnalytics(period, startDate, endDate) {
 
   dailyMetrics.sort((a, b) => new Date(a.date) - new Date(b.date));
 
+  const productMixResult = await query(
+    `SELECT
+       p.weight_class,
+       COALESCE(SUM(sr.sale_quantity), 0)::int AS units_sold
+     ${saleBaseFrom}
+     GROUP BY p.weight_class
+     ORDER BY p.weight_class ASC`,
+    saleParams,
+  );
+
+  const productMixMap = new Map(
+    productMixResult.rows.map((row) => [Number(row.weight_class), Number(row.units_sold)]),
+  );
+  const productMix = WEIGHT_CLASSES.map((weightClass) => ({
+    weightClass: Number(weightClass),
+    unitsSold: productMixMap.get(Number(weightClass)) || 0,
+  }));
+  const totalUnitsSold = productMix.reduce((sum, item) => sum + item.unitsSold, 0);
+
   const brandResult = await query(
     `SELECT
        p.brand,
@@ -1450,6 +1470,8 @@ export async function getSalesReportAnalytics(period, startDate, endDate) {
   return {
     summary: reportSummary,
     dailyMetrics,
+    productMix,
+    totalUnitsSold,
     productsByBrand: brandResult.rows.map((row) => ({
       brand: row.brand,
       unitsSold: row.units_sold,
