@@ -45,15 +45,14 @@ function getWeightClassColor(weightClass) {
 
 function productOptionLabel(product) {
   const createdAtLabel = formatDateLabel(product.created_at);
-  const weightLabel = formatWeightClassLabel(product.weight_class);
 
   if (Number(product.stock_quantity) === 0) {
-    return `${weightLabel} - OUT OF STOCK! - ${createdAtLabel}`;
+    return `OUT OF STOCK (${createdAtLabel})`;
   }
 
   const isLowStock = product.health_indicator === "Low Stock";
-  const healthLabel = isLowStock ? "LOW!" : "";
-  return `${weightLabel} - ${healthLabel} Stock: ${product.stock_quantity} - ${createdAtLabel}`;
+  const stockLabel = isLowStock ? "LOW STOCK" : "GOOD STOCK";
+  return `${stockLabel} — Stock: ${product.stock_quantity} (${createdAtLabel})`;
 }
 
 export default function SaleForm({
@@ -144,24 +143,40 @@ export default function SaleForm({
   }, [products, productStatus, brand]);
 
   const groupedProductOptions = useMemo(() => {
+    // Group products by exact weight class value. Each group's options
+    // already respect the FIFO / availability logic from `filteredProducts`.
     const grouped = new Map();
 
     filteredProducts.forEach((product) => {
-      const groupLabel = formatWeightClassLabel(product.weight_class);
-      const groupItems = grouped.get(groupLabel) || [];
-      groupItems.push({
+      const key = String(product.weight_class);
+      const items = grouped.get(key) || [];
+      items.push({
+        product,
         value: product.product_id,
         label: productOptionLabel(product),
         weightColor: getWeightClassColor(product.weight_class),
       });
-      grouped.set(groupLabel, groupItems);
+      grouped.set(key, items);
     });
 
-    return Array.from(grouped.entries()).map(([groupLabel, options]) => ({
-      groupLabel,
-      options,
-    }));
+    return Array.from(grouped.entries())
+      .sort(([a], [b]) => Number(a) - Number(b))
+      .map(([weightClass, options]) => ({
+        weightClass,
+        displayLabel: `${Number.isInteger(Number(weightClass)) ? Number(weightClass) : Number(weightClass).toFixed(1).replace(/\.0$/, '')} kg`,
+        color: options[0]?.weightColor || "#334155",
+        options,
+      }));
   }, [filteredProducts]);
+
+  const [selectedWeight, setSelectedWeight] = useState("");
+
+  const weightGroups = groupedProductOptions;
+
+  const stockOptions = useMemo(() => {
+    const group = weightGroups.find((g) => g.weightClass === selectedWeight);
+    return group ? group.options : [];
+  }, [weightGroups, selectedWeight]);
 
   // Searchable customer list: dedupe by name (case-insensitive) so
   // customers with multiple historical records only appear once, sorted
@@ -185,6 +200,7 @@ export default function SaleForm({
   );
   const shouldEnableLpgField = !purchaseTank && isFilled;
   const customerLpgValue = shouldEnableLpgField ? lpgTankVariant : "N/A";
+  const total = Number(quantity) * Number(unitPrice);
 
   useEffect(() => {
     if (!brand && brands.length) setBrand(brands[0]);
@@ -192,15 +208,26 @@ export default function SaleForm({
 
   useEffect(() => {
     if (filteredProducts.length) {
-      if (!filteredProducts.find((p) => p.product_id === productId)) {
-        setProductId(filteredProducts[0].product_id);
+      // Ensure selectedWeight is valid for the new filtered set
+      if (!weightGroups.find((g) => g.weightClass === selectedWeight)) {
+        const firstGroup = weightGroups[0];
+        const firstProduct = firstGroup?.options?.[0];
+        setSelectedWeight(firstGroup?.weightClass || "");
+        setProductId(firstProduct?.value || "");
+      } else {
+        // If the current productId is no longer available, pick first in group
+        const currentGroup = weightGroups.find((g) => g.weightClass === selectedWeight);
+        if (currentGroup && !currentGroup.options.find((o) => o.value === productId)) {
+          setProductId(currentGroup.options[0]?.value || "");
+        }
       }
       return;
     }
 
+    setSelectedWeight("");
     setProductId("");
     setUnitPrice(0);
-  }, [filteredProducts, productId]);
+  }, [filteredProducts, productId, selectedWeight, weightGroups]);
 
   useEffect(() => {
     if (!selectedProduct) return;
@@ -212,26 +239,38 @@ export default function SaleForm({
   }, [selectedProduct, priceType]);
 
   useEffect(() => {
-    if (mode === "existing" && customerId) {
-      const customer = customers.find((c) => c.customer_id === customerId);
-      if (customer) {
-        setCustomerName(customer.name);
-        setFbName(customer.fb_name || "");
-        setPhoneNumber(customer.phone_number || "");
-      }
+    if (!weightGroups.length) {
+      setSelectedWeight("");
+      setProductId("");
+      setUnitPrice(0);
+      return;
     }
-  }, [customerId, customers, mode]);
 
-  const total = quantity * unitPrice;
+    let currentGroup = weightGroups.find(
+      (g) => g.weightClass === selectedWeight,
+    );
+
+    if (!currentGroup) {
+      currentGroup = weightGroups[0];
+      setSelectedWeight(currentGroup.weightClass);
+    }
+
+    if (
+      currentGroup &&
+      !currentGroup.options.some((option) => option.value === productId)
+    ) {
+      setProductId(currentGroup.options[0]?.value || "");
+    }
+  }, [weightGroups, selectedWeight, productId]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    // Mantine's Select doesn't reliably enforce native HTML5 "required"
-    // validation, so guard explicitly before submitting.
+
     if (mode === "existing" && !customerId) {
       showToast("Validation Error", "Please select a customer.", "error");
       return;
     }
+
     onSubmit({
       customerId: mode === "existing" ? customerId : undefined,
       customerName,
@@ -417,7 +456,7 @@ export default function SaleForm({
           </div>
         </fieldset>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="space-y-3">
           <div>
             <label
               htmlFor="brand"
@@ -438,56 +477,64 @@ export default function SaleForm({
               ))}
             </select>
           </div>
-          <div>
-            <label
-              htmlFor="product"
-              className="block text-xs font-bold uppercase text-slate-500 mb-1"
-            >
-              Product Selection
-            </label>
-            <select
-              id="product"
-              value={productId}
-              onChange={(e) => setProductId(e.target.value)}
-              required
-              className="w-full text-xs py-3 px-4 border border-slate-200 bg-white rounded-xl font-mono"
-            >
-              <option value="" disabled>
-                Select a batch
-              </option>
-              {groupedProductOptions.map(({ groupLabel, options }) => {
-                const headerColor = options[0]?.weightColor || "#334155";
-                return (
-                  <>
-                    <option
-                      key={`${groupLabel}-header`}
-                      disabled
-                      style={{
-                        backgroundColor: headerColor,
-                        color: "#0f172a",
-                        fontWeight: 700,
-                        paddingLeft: "0.5rem",
-                      }}
-                    >
-                      {groupLabel}
-                    </option>
-                    {options.map((option) => (
-                      <option
-                        key={option.value}
-                        value={option.value}
-                        style={{
-                          backgroundColor: option.weightColor,
-                          color: "#0f172a",
-                          fontWeight: 500,
-                        }}
-                      >
-                        {option.label}
-                      </option>
-                    ))}
-                  </>
-                );
-              })}
-            </select>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label
+                htmlFor="product-weight"
+                className="block text-xs font-bold uppercase text-slate-500 mb-1"
+              >
+                Weight Class
+              </label>
+              <select
+                id="product-weight"
+                value={selectedWeight}
+                onChange={(e) => setSelectedWeight(e.target.value)}
+                className="w-full text-sm py-3 px-4 border border-slate-200 bg-white rounded-xl"
+              >
+                <option value="" disabled>
+                  Select a weight
+                </option>
+                {weightGroups.map((group) => (
+                  <option key={group.weightClass} value={group.weightClass}>
+                    {group.displayLabel}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label
+                htmlFor="product"
+                className="block text-xs font-bold uppercase text-slate-500 mb-1"
+              >
+                Stock Entry
+              </label>
+              <select
+                id="product"
+                value={productId}
+                onChange={(e) => setProductId(e.target.value)}
+                required
+                className="w-full text-xs py-3 px-4 border border-slate-200 bg-white rounded-xl font-mono"
+              >
+                <option value="" disabled>
+                  Select a stock entry
+                </option>
+                {stockOptions.map((option) => (
+                  <option
+                    key={option.value}
+                    value={option.value}
+                    style={{
+                      backgroundColor: option.weightColor,
+                      color: "#0f172a",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
