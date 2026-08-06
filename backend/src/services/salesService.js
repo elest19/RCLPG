@@ -104,7 +104,7 @@ export async function listSales({
 
   const salesBaseWhere = `
      WHERE sr.status IN ${statusFilter}
-       AND ($1 = '' OR c.name ILIKE $2 OR c.fb_name ILIKE $2 OR c.phone_number ILIKE $2
+      AND ($1 = '' OR c.name ILIKE $2 OR c.location ILIKE $2 OR c.phone_number ILIKE $2
             OR p.brand ILIKE $2 OR CAST(p.weight_class AS text) ILIKE $2 OR p.status ILIKE $2)
        ${salesDate.clause}
        ${salesCustomerClause}
@@ -134,7 +134,7 @@ export async function listSales({
 
   const paymentBaseWhere = `
      WHERE sr.status IN ${statusFilter}
-       AND ($1 = '' OR c.name ILIKE $2 OR c.fb_name ILIKE $2 OR c.phone_number ILIKE $2
+       AND ($1 = '' OR c.name ILIKE $2 OR c.location ILIKE $2 OR c.phone_number ILIKE $2
             OR p.brand ILIKE $2 OR CAST(p.weight_class AS text) ILIKE $2 OR p.status ILIKE $2
             OR ch.payment_option ILIKE $2 OR CAST(ch.balance_paid AS text) ILIKE $2)
        ${paymentDate.clause}
@@ -175,7 +175,7 @@ export async function listSales({
       sr.date_created,
       sr.date_updated,
       c.name AS customer_name,
-      c.fb_name,
+      c.location,
       c.phone_number,
       p.brand,
       p.weight_class,
@@ -239,7 +239,7 @@ export async function listSales({
       sr.date_created,
       sr.date_updated,
       c.name AS customer_name,
-      c.fb_name,
+      c.location,
       c.phone_number,
       p.brand,
       p.weight_class,
@@ -301,7 +301,7 @@ export async function listSales({
 
 export async function getSaleById(saleId) {
   const result = await query(
-    `SELECT sr.*, c.name AS customer_name, c.fb_name, c.phone_number,
+    `SELECT sr.*, c.name AS customer_name, c.location, c.phone_number,
             p.brand, p.weight_class, p.status AS product_status
      FROM sales_records sr
      JOIN customers c ON c.customer_id = sr.customer_id
@@ -397,7 +397,7 @@ export async function createSale(payload) {
     const customer = await customerService.findOrCreateCustomer({
       customerId: payload.customerId,
       name: payload.customerName,
-      fbName: payload.fbName,
+      location: payload.location,
       phoneNumber: payload.phoneNumber,
     });
 
@@ -467,7 +467,7 @@ export async function updateSale(saleId, payload) {
 
     await customerService.updateCustomer(existing.customer_id, {
       name: payload.customerName,
-      fbName: payload.fbName,
+      location: payload.location,
       phoneNumber: payload.phoneNumber,
     });
 
@@ -761,13 +761,14 @@ const summaryParams = paymentParams;
 
   const weightMixResult = await query(
     `SELECT
+       p.brand,
        p.weight_class,
        COALESCE(SUM(sr.sale_quantity), 0)::int AS units_sold,
-       COALESCE(SUM(ch.balance_paid), 0)::numeric AS revenue
-     ${paymentBaseFrom}
-     GROUP BY p.weight_class
-     ORDER BY p.weight_class ASC`,
-    paymentParams,
+       COALESCE(SUM(sr.total_amount), 0)::numeric AS revenue
+     ${saleBaseFrom}
+     GROUP BY p.brand, p.weight_class
+     ORDER BY p.brand ASC, p.weight_class ASC`,
+    saleParams,
   );
 
   const totalUnits =
@@ -853,6 +854,7 @@ const summaryParams = paymentParams;
       ...reportSummary,
     },
     productMix: weightMixResult.rows.map((row) => ({
+      brand: row.brand,
       weightClass: Number(row.weight_class),
       unitsSold: row.units_sold,
       revenue: Number(row.revenue),
@@ -1109,7 +1111,7 @@ export async function getReportRows(period, startDate, endDate) {
   const result = await query(
     `SELECT sr.sale_id, sr.date_created, sr.status, sr.sale_quantity, sr.price_type,
             sr.unit_price, sr.total_amount, sr.lpg_tank_variant,
-            c.name AS customer_name, c.fb_name, c.phone_number,
+            c.name AS customer_name, c.location, c.phone_number,
             p.brand, p.weight_class, p.status AS product_status
      FROM sales_records sr
      JOIN customers c ON c.customer_id = sr.customer_id
@@ -1138,7 +1140,7 @@ export async function getSalesLogPdfRows(period, startDate, endDate) {
       sr.total_amount,
       sr.lpg_tank_variant,
       c.name AS customer_name,
-      c.fb_name,
+      c.location,
       c.phone_number,
       p.brand,
       p.weight_class,
@@ -1175,7 +1177,7 @@ export async function getSalesLogPdfRows(period, startDate, endDate) {
       sr.total_amount,
       sr.lpg_tank_variant,
       c.name AS customer_name,
-      c.fb_name,
+      c.location,
       c.phone_number,
       p.brand,
       p.weight_class,
@@ -1194,12 +1196,14 @@ export async function getSalesLogPdfRows(period, startDate, endDate) {
       AND COALESCE(ch.balance_paid, 0) > 0
   `;
 
+  const shiftedPayment = shiftFilterPlaceholders(paymentFilter.where, paymentFilter.params, saleFilter.params.length);
+
   const result = await query(
     `${saleSql}
      UNION ALL
-     ${paymentSql}
+     ${paymentSql.replace(paymentFilter.where, shiftedPayment.whereClause)}
      ORDER BY log_date DESC`,
-    [...saleFilter.params, ...paymentFilter.params],
+    [...saleFilter.params, ...shiftedPayment.params],
   );
 
   return result.rows;

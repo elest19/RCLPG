@@ -5,8 +5,10 @@ import { useAuth } from "../context/AuthContext";
 import { subscribeRealtime } from "../utils/realtime";
 import LoadingSpinner from "../components/LoadingSpinner";
 import Modal from "../components/Modal";
+import ResponsiveDetailModal from "../components/ResponsiveDetailModal";
 import BrandAutocomplete from "../components/BrandAutocomplete";
 import BrandInventoryOverview from "../components/BrandInventoryOverview";
+import useIsMobile from "../hooks/useIsMobile";
 
 const FALLBACK_BRANDS = ["Regasco", "Seagas", "Pryce"];
 const WEIGHTS = [2.7, 5, 11, 22, 50];
@@ -33,9 +35,11 @@ function InventoryTable({
   onEdit,
   onDelete,
   onArchive,
+  onView,
   isAdmin,
   archiveMode = false,
 }) {
+  const isMobile = useIsMobile();
   const archiveEligibleIds = useMemo(() => {
     const eligible = new Set();
     const sorted = [...products].sort(
@@ -68,6 +72,30 @@ function InventoryTable({
       <p className="text-xs text-slate-400 italic py-3">
         No products match the current filters.
       </p>
+    );
+  }
+
+  if (isMobile) {
+    return (
+      <div className="space-y-2">
+        {products.map((p) => (
+          <button
+            key={p.product_id}
+            type="button"
+            onClick={() => onView?.(p)}
+            className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-bold text-slate-800">Stock</span>
+              <span className="font-black text-slate-900">{p.stock_quantity}</span>
+            </div>
+            <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
+              <span>Date Created</span>
+              <span>{new Date(p.created_at).toLocaleDateString()}</span>
+            </div>
+          </button>
+        ))}
+      </div>
     );
   }
 
@@ -176,6 +204,35 @@ export default function InventoryPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [saving, setSaving] = useState(false);
   const [inventoryRefreshKey, setInventoryRefreshKey] = useState(0);
+  const [mobileDetail, setMobileDetail] = useState(null);
+  const isMobile = useIsMobile();
+
+  const archiveEligibleIds = useMemo(() => {
+    const eligible = new Set();
+    const sorted = [...products].sort(
+      (left, right) =>
+        new Date(left.created_at || 0) - new Date(right.created_at || 0),
+    );
+
+    if (sorted.length <= 1) return eligible;
+
+    const firstPositiveStockIndex = sorted.findIndex(
+      (product) => Number(product.stock_quantity || 0) > 0,
+    );
+
+    if (firstPositiveStockIndex === -1) {
+      sorted.slice(0, sorted.length - 1).forEach((product) => {
+        eligible.add(product.product_id);
+      });
+      return eligible;
+    }
+
+    sorted.slice(0, firstPositiveStockIndex).forEach((product) => {
+      eligible.add(product.product_id);
+    });
+
+    return eligible;
+  }, [products]);
 
   const loadData = useCallback(async () => {
     try {
@@ -225,6 +282,63 @@ export default function InventoryPage() {
     });
     return groups;
   }, [products, brands]);
+
+  const openProductDetails = (product) => {
+    const isArchiveEligible = archiveEligibleIds?.has?.(product.product_id);
+    setMobileDetail({
+      title: "Inventory Details",
+      details: [
+        { label: "Status", value: product.status },
+        { label: "Brand", value: product.brand },
+        { label: "Weight", value: `${product.weight_class}kg` },
+        { label: "Health", value: product.health_indicator },
+        { label: "Stock", value: product.stock_quantity },
+        { label: "Consumer Price", value: formatCurrency(product.regular_retail) },
+        { label: "Retail Price", value: formatCurrency(product.wholesale_price) },
+        { label: "Original Price", value: isAdministrator ? formatCurrency(product.initial_price) : null },
+        { label: "Date Created", value: new Date(product.created_at).toLocaleDateString() },
+      ],
+      footer: isAdministrator ? (
+        <>
+          <button
+            type="button"
+            onClick={() => {
+              setMobileDetail(null);
+              setDeleteTarget(product);
+            }}
+            className="rounded-lg bg-red-50 px-3 py-2 text-xs font-bold text-red-600"
+          >
+            Delete
+          </button>
+          {!showArchived && (
+            isArchiveEligible ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileDetail(null);
+                  setArchiveTarget(product);
+                }}
+                className="rounded-lg bg-indigo-100 px-3 py-2 text-xs font-bold text-indigo-700"
+              >
+                Add to Archive
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileDetail(null);
+                  setEditProduct(product);
+                }}
+                className="rounded-lg bg-amber-100 px-3 py-2 text-xs font-bold text-amber-700"
+              >
+                Edit
+              </button>
+            )
+          )}
+        </>
+      ) : null,
+    });
+  };
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -344,6 +458,7 @@ export default function InventoryPage() {
                     onEdit={setEditProduct}
                     onDelete={setDeleteTarget}
                     onArchive={setArchiveTarget}
+                    onView={openProductDetails}
                     isAdmin={isAdministrator}
                     archiveMode={showArchived}
                   />
@@ -804,6 +919,15 @@ export default function InventoryPage() {
             </label>
           </div>
         </Modal>
+      )}
+
+      {mobileDetail && (
+        <ResponsiveDetailModal
+          title={mobileDetail.title}
+          onClose={() => setMobileDetail(null)}
+          details={mobileDetail.details}
+          footer={mobileDetail.footer}
+        />
       )}
 
       {isAdministrator && archiveTarget && (

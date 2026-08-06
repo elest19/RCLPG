@@ -496,7 +496,37 @@ export async function buildSalesLogPdfBuffer(rows, title, generatedBy, analytics
   const chunks = [];
   const summary = analytics.summary || {};
   const productMix = analytics.productMix || [];
-  const totalUnitsSold = Number(analytics.totalUnitsSold ?? productMix.reduce((sum, item) => sum + Number(item.unitsSold || 0), 0));
+
+  // Derive product mix directly from the actual sales rows to ensure Brand + Weight
+  // combinations reflect what was sold in the selected period. This is more reliable
+  // than relying on analytics payload which may be missing brand values.
+  const salesRows = (rows || []).filter((r) => String(r.entry_type || '').toLowerCase() !== 'payment');
+  const mixMap = new Map();
+  for (const r of salesRows) {
+    const brand = r.brand ? String(r.brand).trim() : '';
+    const weight = r.weight_class != null ? Number(r.weight_class) : 0;
+    const qty = r.sale_quantity != null ? Number(r.sale_quantity) : 0;
+    if (!qty || qty <= 0) continue;
+    const key = `${brand}::${weight}`;
+    const existing = mixMap.get(key) || { brand, weightClass: weight, unitsSold: 0, revenue: 0 };
+    existing.unitsSold += qty;
+    existing.revenue += Number(r.total_amount || 0);
+    mixMap.set(key, existing);
+  }
+
+  const salesDerivedMix = Array.from(mixMap.values()).sort((a, b) => {
+    const weightCompare = Number(a.weightClass) - Number(b.weightClass);
+    if (weightCompare !== 0) return weightCompare;
+    return String(a.brand).localeCompare(String(b.brand));
+  });
+
+  const fallbackMix = (productMix || []).filter((it) => Number(it.unitsSold || 0) > 0);
+  fallbackMix.sort((a, b) => Number(a.weightClass) - Number(b.weightClass) || String(a.brand || '').localeCompare(String(b.brand || '')));
+
+  const filteredProductMix = salesDerivedMix.length > 0 ? salesDerivedMix : fallbackMix;
+  const totalUnitsSold = Number(
+    analytics.totalUnitsSold ?? filteredProductMix.reduce((sum, item) => sum + Number(item.unitsSold || 0), 0),
+  );
 
   doc.on('data', (c) => chunks.push(c));
   const endPromise = new Promise((resolve, reject) => {
@@ -524,7 +554,7 @@ export async function buildSalesLogPdfBuffer(rows, title, generatedBy, analytics
   ];
 
   const availableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-  const rel = [0.10, 0.13, 0.15, 0.12, 0.10, 0.06, 0.08, 0.10, 0.08];
+  const rel = [0.10, 0.13, 0.15, 0.12, 0.15, 0.06, 0.08, 0.10, 0.08];
   const colWidths = rel.map((r) => Math.floor(r * availableWidth));
 
   function renderTableHeader() {
@@ -636,15 +666,16 @@ export async function buildSalesLogPdfBuffer(rows, title, generatedBy, analytics
       doc.text('Product & Inventory Mix', mixX, sectionStartY, { width: mixWidth });
 
       doc.font('Helvetica-Bold').fontSize(8);
-      doc.text('Weight Class', mixX, sectionStartY + 18, { width: mixWidth * 0.6 });
+      doc.text('Brand - Weight', mixX, sectionStartY + 18, { width: mixWidth * 0.6 });
       doc.text('Units Sold', mixX + mixWidth * 0.6, sectionStartY + 18, { width: mixWidth * 0.4, align: 'right' });
 
       doc.font('Helvetica').fontSize(8);
       let mixY = sectionStartY + 32;
-      productMix.forEach((item) => {
+      filteredProductMix.forEach((item) => {
+        const brandLabel = item.brand ? `${String(item.brand).trim()} ` : '';
         const weightClass = Number(item.weightClass ?? 0);
         const unitsSold = Number(item.unitsSold ?? 0);
-        doc.text(`${weightClass.toFixed(weightClass % 1 === 0 ? 0 : 1)} kg`, mixX, mixY, { width: mixWidth * 0.6 });
+        doc.text(`${brandLabel} - ${weightClass.toFixed(weightClass % 1 === 0 ? 0 : 1)} kg`, mixX, mixY, { width: mixWidth * 0.6 });
         doc.text(String(unitsSold), mixX + mixWidth * 0.6, mixY, { width: mixWidth * 0.4, align: 'right' });
         mixY += 12;
       });

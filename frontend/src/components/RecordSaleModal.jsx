@@ -65,7 +65,7 @@ export default function RecordSaleModal({ open, onClose, onSuccess }) {
       ? customers.find((c) => c.customer_id === payload.customerId)
       : {
           name: payload.customerName,
-          fb_name: payload.fbName,
+          location: payload.location,
           phone_number: payload.phoneNumber,
         };
 
@@ -75,7 +75,7 @@ export default function RecordSaleModal({ open, onClose, onSuccess }) {
         ? `${product.brand} (${productLabel(product)})`
         : payload.productId,
       customerName: customer?.name || payload.customerName,
-      fbName: customer?.fb_name || payload.fbName,
+      location: customer?.location || payload.location,
       phoneNumber: customer?.phone_number || payload.phoneNumber,
       total: payload.quantity * payload.unitPrice,
     });
@@ -146,8 +146,8 @@ export default function RecordSaleModal({ open, onClose, onSuccess }) {
               <dd className="font-semibold">{confirmSale.customerName}</dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-slate-500">Facebook</dt>
-              <dd>{confirmSale.fbName || "-"}</dd>
+              <dt className="text-slate-500">Location</dt>
+              <dd>{confirmSale.location || "-"}</dd>
             </div>
             <div className="flex justify-between">
               <dt className="text-slate-500">Phone</dt>

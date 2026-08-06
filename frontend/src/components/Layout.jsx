@@ -114,68 +114,96 @@ export default function Layout({ children }) {
           </div>
         </div>
 
-        {mobileOpen && (
-          <div className="md:hidden border-t border-slate-200 bg-white px-4 py-2 space-y-1 shadow-inner">
-            <Link
-              to="/dashboard"
-              className="block px-3 py-2 rounded-xl text-sm font-bold text-red-600 bg-red-50"
+        <div className="md:hidden">
+          {mobileOpen && (
+            <button
+              type="button"
+              className="fixed inset-0 z-40 bg-slate-950/50"
+              aria-label="Close navigation menu"
               onClick={() => setMobileOpen(false)}
-            >
-              Dashboard & Sales
-            </Link>
-            <Link
-              to="/inventory"
-              className="block px-3 py-2 rounded-xl text-sm text-slate-600"
-              onClick={() => setMobileOpen(false)}
-            >
-              Inventory Catalog
-            </Link>
-            <Link
-              to="/sales-log"
-              className="block px-3 py-2 rounded-xl text-sm text-slate-600"
-              onClick={() => setMobileOpen(false)}
-            >
-              Customer & Sales Log
-            </Link>
-            <Link
-              to="/credit-logs"
-              className="block px-3 py-2 rounded-xl text-sm text-slate-600"
-              onClick={() => setMobileOpen(false)}
-            >
-              Credit Logs
-            </Link>
-            {isAdministrator && (
-              <Link
-                to="/admin/profile"
-                className="block px-3 py-2 rounded-xl text-sm text-slate-600"
-                onClick={() => setMobileOpen(false)}
-              >
-                Admin Profile
-              </Link>
-            )}
-            {!isAdministrator && (
+            />
+          )}
+          <div
+            className={`fixed top-0 right-0 z-50 flex h-full w-72 max-w-[85vw] flex-col border-l border-slate-200 bg-white shadow-2xl transition-transform duration-300 ${mobileOpen ? "translate-x-0" : "translate-x-full"}`}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-4">
+              <div>
+                <p className="text-sm font-black text-slate-900">Menu</p>
+                <p className="text-xs text-slate-500">Navigate the portal</p>
+              </div>
               <button
                 type="button"
-                onClick={() => {
-                  setProfileOpen(true);
-                  setMobileOpen(false);
-                }}
-                className="block w-full text-left px-3 py-2 rounded-xl text-sm text-slate-600"
+                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                aria-label="Close menu"
+                onClick={() => setMobileOpen(false)}
               >
-                Profile
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
-            )}
-            <div className="pt-2 border-t border-slate-100">
+            </div>
+            <nav className="flex-1 space-y-2 px-4 py-4" aria-label="Mobile Navigation">
+              <Link
+                to="/dashboard"
+                className="block rounded-xl px-3 py-2.5 text-sm font-bold text-red-600 bg-red-50"
+                onClick={() => setMobileOpen(false)}
+              >
+                Dashboard & Sales
+              </Link>
+              <Link
+                to="/inventory"
+                className="block rounded-xl px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-100"
+                onClick={() => setMobileOpen(false)}
+              >
+                Inventory Catalog
+              </Link>
+              <Link
+                to="/sales-log"
+                className="block rounded-xl px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-100"
+                onClick={() => setMobileOpen(false)}
+              >
+                Customer & Sales Log
+              </Link>
+              <Link
+                to="/credit-logs"
+                className="block rounded-xl px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-100"
+                onClick={() => setMobileOpen(false)}
+              >
+                Credit Logs
+              </Link>
+              {isAdministrator && (
+                <Link
+                  to="/admin/profile"
+                  className="block rounded-xl px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-100"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  Admin Profile
+                </Link>
+              )}
+              {!isAdministrator && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileOpen(true);
+                    setMobileOpen(false);
+                  }}
+                  className="block w-full rounded-xl px-3 py-2.5 text-left text-sm text-slate-600 hover:bg-slate-100"
+                >
+                  Profile
+                </button>
+              )}
+            </nav>
+            <div className="border-t border-slate-200 p-4">
               <button
                 type="button"
                 onClick={handleLogout}
-                className="w-full bg-slate-800 text-white py-2.5 text-xs font-bold rounded-lg"
+                className="w-full rounded-lg bg-slate-800 px-3 py-2.5 text-xs font-bold text-white"
               >
                 Logout
               </button>
             </div>
           </div>
-        )}
+        </div>
       </header>
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">

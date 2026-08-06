@@ -20,6 +20,68 @@ function buildStockTierClause(stockTier) {
   return "";
 }
 
+function matchesStockTier(product, stockTier) {
+  const stockQuantity = Number(product.stock_quantity || 0);
+  if (stockTier === "out") return stockQuantity <= 0;
+  if (stockTier === "low") return stockQuantity > 0 && stockQuantity < 5;
+  if (stockTier === "good") return stockQuantity > 5;
+  return true;
+}
+
+function normalizeProduct(product) {
+  return {
+    ...product,
+    weight_class: Number(product.weight_class),
+    regular_retail: Number(product.regular_retail),
+    wholesale_price: Number(product.wholesale_price),
+    initial_price: Number(product.initial_price),
+  };
+}
+
+function selectCanonicalInventoryProducts(products) {
+  if (!products.length) return [];
+
+  const groups = new Map();
+  products.forEach((product) => {
+    const key = `${product.brand}::${product.weight_class}::${product.status}`;
+    const bucket = groups.get(key) || [];
+    bucket.push(product);
+    groups.set(key, bucket);
+  });
+
+  const canonicalProducts = [];
+
+  groups.forEach((bucket) => {
+    const sorted = [...bucket].sort((left, right) => {
+      const leftDate = new Date(left.created_at || 0).getTime();
+      const rightDate = new Date(right.created_at || 0).getTime();
+      if (leftDate !== rightDate) return leftDate - rightDate;
+      return String(left.product_id).localeCompare(String(right.product_id));
+    });
+
+    if (sorted.length <= 1) {
+      canonicalProducts.push(sorted[0]);
+      return;
+    }
+
+    let selectedProduct = null;
+    for (const candidate of sorted) {
+      if (Number(candidate.stock_quantity || 0) > 0) {
+        selectedProduct = candidate;
+        break;
+      }
+    }
+
+    if (!selectedProduct) {
+      selectedProduct = sorted[sorted.length - 1];
+    }
+
+    canonicalProducts.push(selectedProduct);
+  });
+
+  return canonicalProducts;
+}
+
 export async function listProducts({
   search = "",
   brand = "",
@@ -34,7 +96,6 @@ export async function listProducts({
       : condition === "empty"
         ? `AND status = 'Empty Cylinder'`
         : "";
-  const stockClause = buildStockTierClause(stockTier);
   const archivedClause = includeArchived ? `AND is_archived = TRUE` : `AND is_archived = FALSE`;
 
   const params = [search, `%${search}%`];
@@ -48,21 +109,26 @@ export async function listProducts({
      WHERE ($1 = '' OR brand ILIKE $2 OR CAST(weight_class AS text) ILIKE $2 OR status ILIKE $2)
        ${brandClause}
        ${conditionClause}
-       ${stockClause}
        ${archivedClause}
-     ORDER BY brand ASC,
-       weight_class ASC,
-       CASE WHEN status = 'Filled Tank' THEN 0 ELSE 1 END`,
+     ORDER BY created_at ASC, product_id ASC`,
     params,
   );
 
-  return result.rows.map((product) => ({
-    ...product,
-    weight_class: Number(product.weight_class),
-    regular_retail: Number(product.regular_retail),
-    wholesale_price: Number(product.wholesale_price),
-    initial_price: Number(product.initial_price),
-  }));
+  const canonicalProducts = selectCanonicalInventoryProducts(result.rows);
+  const visibleProducts = canonicalProducts.filter((product) => matchesStockTier(product, stockTier));
+
+  return visibleProducts
+    .slice()
+    .sort((left, right) => {
+      const brandCompare = String(left.brand).localeCompare(String(right.brand));
+      if (brandCompare !== 0) return brandCompare;
+
+      const weightCompare = Number(left.weight_class) - Number(right.weight_class);
+      if (weightCompare !== 0) return weightCompare;
+
+      return left.status === "Filled Tank" ? -1 : 1;
+    })
+    .map(normalizeProduct);
 }
 
 export async function getProductById(productId, client = null) {
@@ -227,27 +293,47 @@ export async function getWeeklyStockSummary() {
 
 export async function getLowStockProducts() {
   const result = await query(
-    `SELECT product_id, brand, weight_class, status, stock_quantity, health_indicator
+    `SELECT product_id, brand, weight_class, status, stock_quantity, health_indicator,
+            created_at
      FROM lpg_products
      WHERE is_archived = FALSE
-       AND health_indicator IN ('Low Stock', 'Out of Stock')
-     ORDER BY
-       CASE health_indicator WHEN 'Out of Stock' THEN 0 ELSE 1 END,
-       weight_class ASC,
-       brand ASC`,
+     ORDER BY created_at ASC, product_id ASC`,
   );
-  return result.rows;
+
+  return selectCanonicalInventoryProducts(result.rows)
+    .filter((product) => ["Low Stock", "Out of Stock"].includes(product.health_indicator))
+    .sort((left, right) => {
+      const healthRank = left.health_indicator === "Out of Stock" ? 0 : 1;
+      const otherHealthRank = right.health_indicator === "Out of Stock" ? 0 : 1;
+      if (healthRank !== otherHealthRank) return healthRank - otherHealthRank;
+
+      const weightCompare = Number(left.weight_class) - Number(right.weight_class);
+      if (weightCompare !== 0) return weightCompare;
+
+      return String(left.brand).localeCompare(String(right.brand));
+    })
+    .map(normalizeProduct);
 }
 
 export async function getInventoryMetrics() {
   const result = await query(
-    `SELECT
-       COALESCE(SUM(CASE WHEN status = 'Filled Tank' THEN stock_quantity ELSE 0 END), 0)::int AS total_filled,
-       COALESCE(SUM(CASE WHEN status = 'Empty Cylinder' THEN stock_quantity ELSE 0 END), 0)::int AS total_empty
+    `SELECT product_id, brand, weight_class, status, stock_quantity, created_at
      FROM lpg_products
-     WHERE is_archived = FALSE`,
+     WHERE is_archived = FALSE
+     ORDER BY created_at ASC, product_id ASC`,
   );
-  return result.rows[0];
+
+  const canonicalProducts = selectCanonicalInventoryProducts(result.rows);
+  const totals = canonicalProducts.reduce(
+    (summary, product) => {
+      if (product.status === "Filled Tank") summary.total_filled += Number(product.stock_quantity || 0);
+      if (product.status === "Empty Cylinder") summary.total_empty += Number(product.stock_quantity || 0);
+      return summary;
+    },
+    { total_filled: 0, total_empty: 0 },
+  );
+
+  return totals;
 }
 
 export async function findEmptyProduct(brand, weightClass, client = null) {
@@ -255,10 +341,10 @@ export async function findEmptyProduct(brand, weightClass, client = null) {
   const result = await runner(
     `SELECT * FROM lpg_products
      WHERE brand = $1 AND weight_class = $2 AND status = 'Empty Cylinder' AND is_archived = FALSE
-     LIMIT 1`,
+     ORDER BY created_at ASC, product_id ASC`,
     [brand, weightClass],
   );
-  return result.rows[0] || null;
+  return selectCanonicalInventoryProducts(result.rows)[0] || null;
 }
 
 export async function executeTankSwap(
@@ -315,18 +401,30 @@ export async function reverseTankSwap(
 
 export async function getBrandInventoryOverview() {
   const result = await query(
-    `SELECT brand,
-            COALESCE(SUM(CASE WHEN status = 'Filled Tank' THEN stock_quantity ELSE 0 END), 0)::int AS total_filled,
-            COALESCE(SUM(CASE WHEN status = 'Empty Cylinder' THEN stock_quantity ELSE 0 END), 0)::int AS total_empty
+    `SELECT brand, weight_class, status, stock_quantity, created_at
      FROM lpg_products
      WHERE is_archived = FALSE
-     GROUP BY brand
-     ORDER BY brand ASC`,
+     ORDER BY brand ASC, created_at ASC, product_id ASC`,
   );
-  return result.rows.map((row) => ({
-    brand: row.brand,
-    total_filled: row.total_filled,
-    total_empty: row.total_empty,
-    total_combined: row.total_filled + row.total_empty,
-  }));
+
+  const canonicalProducts = selectCanonicalInventoryProducts(result.rows);
+  const grouped = canonicalProducts.reduce((acc, product) => {
+    if (!acc[product.brand]) {
+      acc[product.brand] = { brand: product.brand, total_filled: 0, total_empty: 0 };
+    }
+
+    if (product.status === "Filled Tank") acc[product.brand].total_filled += Number(product.stock_quantity || 0);
+    if (product.status === "Empty Cylinder") acc[product.brand].total_empty += Number(product.stock_quantity || 0);
+
+    return acc;
+  }, {});
+
+  return Object.values(grouped)
+    .sort((left, right) => String(left.brand).localeCompare(String(right.brand)))
+    .map((row) => ({
+      brand: row.brand,
+      total_filled: row.total_filled,
+      total_empty: row.total_empty,
+      total_combined: row.total_filled + row.total_empty,
+    }));
 }

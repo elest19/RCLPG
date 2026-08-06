@@ -3,8 +3,10 @@ import { api, formatCurrency } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import LoadingSpinner from '../components/LoadingSpinner';
 import Modal from '../components/Modal';
+import ResponsiveDetailModal from '../components/ResponsiveDetailModal';
 import DownloadCreditLogModal from '../components/DownloadCreditLogModal';
 import { subscribeRealtime } from '../utils/realtime';
+import useIsMobile from '../hooks/useIsMobile';
 
 function CreditStatusBadge({ status }) {
   const isPaid = status === 'Paid';
@@ -188,9 +190,13 @@ export default function CreditLogsPage() {
   const [customerFilter, setCustomerFilter] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [brandFilter, setBrandFilter] = useState('');
+  const [weightClassFilter, setWeightClassFilter] = useState('');
   const pageSize = 10;
   const [activeModal, setActiveModal] = useState(null);
+  const [mobileDetail, setMobileDetail] = useState(null);
   const [downloadOpen, setDownloadOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   const loadData = useCallback(async () => {
     try {
@@ -245,9 +251,12 @@ export default function CreditLogsPage() {
           && rowDate.getDate() === filterDate.getDate();
       })();
 
-      return matchesSearch && matchesCustomer && matchesStatus && matchesDate;
+      const matchesBrand = !brandFilter || String(row.brand || '').toLowerCase() === brandFilter.toLowerCase();
+      const matchesWeight = !weightClassFilter || String(row.weight_class || '') === String(weightClassFilter);
+
+      return matchesSearch && matchesCustomer && matchesStatus && matchesDate && matchesBrand && matchesWeight;
     });
-  }, [credits, customerFilter, dateFilter, searchTerm, statusFilter]);
+  }, [credits, customerFilter, dateFilter, searchTerm, statusFilter, brandFilter, weightClassFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredCredits.length / pageSize));
   const pagedCredits = filteredCredits.slice((page - 1) * pageSize, page * pageSize);
@@ -260,7 +269,37 @@ export default function CreditLogsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [customerFilter, dateFilter, searchTerm, statusFilter]);
+  }, [customerFilter, dateFilter, searchTerm, statusFilter, brandFilter, weightClassFilter]);
+
+  const brandOptions = [...new Set(credits.map((row) => row.brand).filter(Boolean))];
+  const weightOptions = [...new Set(credits.map((row) => String(row.weight_class)).filter(Boolean))];
+
+  const openCreditDetails = (row) => {
+    setMobileDetail({
+      title: 'Credit Details',
+      details: [
+        { label: 'Customer Name', value: row.customer_name },
+        { label: 'Phone Number', value: row.phone_number || '-' },
+        { label: 'Product Details', value: row.product_details },
+        { label: 'Product Price', value: formatCurrency(row.total_amount) },
+        { label: 'Total Paid', value: formatCurrency(row.total_paid) },
+        { label: 'Remaining Credit', value: formatCurrency(row.remaining_credit) },
+        { label: 'Credit Status', value: row.credit_status },
+      ],
+      footer: (
+        <button
+          type="button"
+          onClick={() => {
+            setMobileDetail(null);
+            setActiveModal({ saleId: row.sale_id, readOnly: row.remaining_credit <= 0 });
+          }}
+          className="rounded-lg bg-red-600 px-3 py-2 text-xs font-bold text-white"
+        >
+          {row.remaining_credit > 0 ? 'Manage Credit' : 'View Credit'}
+        </button>
+      ),
+    });
+  };
 
   if (loading && !credits.length) return <LoadingSpinner />;
 
@@ -276,16 +315,18 @@ export default function CreditLogsPage() {
       </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-          <span className="mb-1 block">Search</span>
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Customer, number, product"
-            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
-          />
-        </label>
+        {!isMobile && (
+          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            <span className="mb-1 block">Search</span>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Customer, number, product"
+              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+            />
+          </label>
+        )}
         <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
           <span className="mb-1 block">Customer</span>
           <input
@@ -317,62 +358,116 @@ export default function CreditLogsPage() {
             <option value="paid">Paid</option>
           </select>
         </label>
+        {isMobile && (
+          <>
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              <span className="mb-1 block">Brand</span>
+              <select
+                value={brandFilter}
+                onChange={(e) => setBrandFilter(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+              >
+                <option value="">All Brands</option>
+                {brandOptions.map((brand) => (
+                  <option key={brand} value={brand}>{brand}</option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              <span className="mb-1 block">Weight Class</span>
+              <select
+                value={weightClassFilter}
+                onChange={(e) => setWeightClassFilter(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+              >
+                <option value="">All Weights</option>
+                {weightOptions.map((weight) => (
+                  <option key={weight} value={weight}>{weight}kg</option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
-        <table className="w-full min-w-[900px] text-left text-xs sm:text-sm whitespace-nowrap">
-          <thead className="bg-red-500 text-slate-100 font-bold uppercase tracking-wider">
-            <tr>
-              <th className="p-3">Customer Name</th>
-              <th className="p-3">Number</th>
-              <th className="p-3">Product Details</th>
-              <th className="p-3 text-center">Product Price</th>
-              <th className="p-3 text-center">Total Paid</th>
-              <th className="p-3 text-center">Remaining Credit</th>
-              <th className="p-3 text-center">Credit Status</th>
-              <th className="p-3 text-center">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="font-medium text-slate-600">
-            {pagedCredits.map((row) => (
-              <tr
-                key={row.sale_id}
-                className="odd:bg-white even:bg-slate-50/70 hover:bg-slate-100/80 transition-colors"
-              >
-                <td className="p-3 font-bold text-slate-800">{row.customer_name}</td>
-                <td className="p-3 font-mono text-xs">{row.phone_number || '-'}</td>
-                <td className="p-3">{row.product_details}</td>
-                <td className="p-3 text-center">{formatCurrency(row.total_amount)}</td>
-                <td className="p-3 text-center text-emerald-600 font-bold">{formatCurrency(row.total_paid)}</td>
-                <td className="p-3 text-center text-red-600 font-extrabold">{formatCurrency(row.remaining_credit)}</td>
-                <td className="p-3 text-center"><CreditStatusBadge status={row.credit_status} /></td>
-                <td className="p-3 text-center">
-                  {row.remaining_credit > 0 ? (
-                    <button
-                      type="button"
-                      onClick={() => setActiveModal({ saleId: row.sale_id, readOnly: false })}
-                      className="text-xs font-bold bg-red-600 text-white hover:bg-red-700 px-2.5 py-1 rounded-lg"
-                    >
-                      Manage Credit
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setActiveModal({ saleId: row.sale_id, readOnly: true })}
-                      className="text-xs font-bold bg-slate-100 hover:bg-slate-800 hover:text-white px-2.5 py-1 rounded-lg"
-                    >
-                      View Credit
-                    </button>
-                  )}
-                </td>
+      {isMobile ? (
+        <div className="space-y-2">
+          {pagedCredits.map((row) => (
+            <button
+              key={row.sale_id}
+              type="button"
+              onClick={() => openCreditDetails(row)}
+              className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-bold text-slate-800">{row.customer_name}</span>
+                <span className="font-black text-red-600">{formatCurrency(row.remaining_credit)}</span>
+              </div>
+              <p className="mt-2 text-[11px] text-slate-500">{row.product_details}</p>
+            </button>
+          ))}
+          {filteredCredits.length === 0 && (
+            <p className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-400">
+              {credits.length === 0 ? 'No credit sales recorded.' : 'No matching credit sales found.'}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
+          <table className="w-full min-w-[900px] text-left text-xs sm:text-sm whitespace-nowrap">
+            <thead className="bg-red-500 text-slate-100 font-bold uppercase tracking-wider">
+              <tr>
+                <th className="p-3">Customer Name</th>
+                <th className="p-3">Number</th>
+                <th className="p-3">Product Details</th>
+                <th className="p-3 text-center">Product Price</th>
+                <th className="p-3 text-center">Total Paid</th>
+                <th className="p-3 text-center">Remaining Credit</th>
+                <th className="p-3 text-center">Credit Status</th>
+                <th className="p-3 text-center">Actions</th>
               </tr>
-            ))}
-            {filteredCredits.length === 0 && (
-              <tr><td colSpan={8} className="text-center py-8 text-slate-400">{credits.length === 0 ? 'No credit sales recorded.' : 'No matching credit sales found.'}</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="font-medium text-slate-600">
+              {pagedCredits.map((row) => (
+                <tr
+                  key={row.sale_id}
+                  className="odd:bg-white even:bg-slate-50/70 hover:bg-slate-100/80 transition-colors"
+                >
+                  <td className="p-3 font-bold text-slate-800">{row.customer_name}</td>
+                  <td className="p-3 font-mono text-xs">{row.phone_number || '-'}</td>
+                  <td className="p-3">{row.product_details}</td>
+                  <td className="p-3 text-center">{formatCurrency(row.total_amount)}</td>
+                  <td className="p-3 text-center text-emerald-600 font-bold">{formatCurrency(row.total_paid)}</td>
+                  <td className="p-3 text-center text-red-600 font-extrabold">{formatCurrency(row.remaining_credit)}</td>
+                  <td className="p-3 text-center"><CreditStatusBadge status={row.credit_status} /></td>
+                  <td className="p-3 text-center">
+                    {row.remaining_credit > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => setActiveModal({ saleId: row.sale_id, readOnly: false })}
+                        className="text-xs font-bold bg-red-600 text-white hover:bg-red-700 px-2.5 py-1 rounded-lg"
+                      >
+                        Manage Credit
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setActiveModal({ saleId: row.sale_id, readOnly: true })}
+                        className="text-xs font-bold bg-slate-100 hover:bg-slate-800 hover:text-white px-2.5 py-1 rounded-lg"
+                      >
+                        View Credit
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {filteredCredits.length === 0 && (
+                <tr><td colSpan={8} className="text-center py-8 text-slate-400">{credits.length === 0 ? 'No credit sales recorded.' : 'No matching credit sales found.'}</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {filteredCredits.length > pageSize && (
         <div className="flex items-center justify-between gap-3 px-4 py-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-600">
@@ -396,6 +491,15 @@ export default function CreditLogsPage() {
             Next
           </button>
         </div>
+      )}
+
+      {mobileDetail && (
+        <ResponsiveDetailModal
+          title={mobileDetail.title}
+          onClose={() => setMobileDetail(null)}
+          details={mobileDetail.details}
+          footer={mobileDetail.footer}
+        />
       )}
 
       {activeModal && (

@@ -12,6 +12,8 @@ import BrandInventoryOverview from "../components/BrandInventoryOverview";
 import Modal from "../components/Modal";
 import { subscribeRealtime } from "../utils/realtime";
 import { getSalesEntrySummary } from "../utils/salesTable";
+import useIsMobile from "../hooks/useIsMobile";
+import ResponsiveDetailModal from "../components/ResponsiveDetailModal";
 
 export default function DashboardPage() {
   const { showToast } = useToast();
@@ -31,6 +33,8 @@ export default function DashboardPage() {
   const [expenseEndDate, setExpenseEndDate] = useState("");
   const [reportRefreshKey, setReportRefreshKey] = useState(0);
   const [isLowStockExpanded, setIsLowStockExpanded] = useState(true);
+  const isMobile = useIsMobile();
+  const [mobileDetail, setMobileDetail] = useState(null);
 
   const loadData = useCallback(
     async (page = 1) => {
@@ -112,6 +116,69 @@ export default function DashboardPage() {
   const closeExpenseModal = () => {
     setExpenseModalOpen(false);
     setEditingExpense(null);
+  };
+
+  const openExpenseDetails = (item) => {
+    setMobileDetail({
+      title: "Expense Details",
+      details: [
+        { label: "Expense", value: item.expenses },
+        { label: "Amount", value: formatCurrency(item.amount) },
+        { label: "Date", value: formatDateLocale(item.date) },
+      ],
+      footer: isAdministrator ? (
+        <>
+          <button
+            type="button"
+            onClick={() => {
+              setMobileDetail(null);
+              openEditExpense(item);
+            }}
+            className="rounded-lg bg-amber-100 px-3 py-2 text-xs font-bold text-amber-700"
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMobileDetail(null);
+              setExpenseDeleteTarget(item);
+            }}
+            className="rounded-lg bg-red-50 px-3 py-2 text-xs font-bold text-red-600"
+          >
+            Delete
+          </button>
+        </>
+      ) : null,
+    });
+  };
+
+  const openSaleDetails = (sale) => {
+    const entrySummary = getSalesEntrySummary(sale);
+    const isPayment = sale.entry_type === "payment";
+    setMobileDetail({
+      title: "Sale Details",
+      details: [
+        { label: "Customer", value: sale.customer_name },
+        { label: "Product", value: `${sale.brand} - ${sale.weight_class}kg - ${sale.product_status}` },
+        { label: "Type", value: entrySummary.typeLabel },
+        { label: "Traded", value: sale.lpg_tank_variant || "-" },
+        { label: "Quantity", value: isPayment ? "—" : sale.sale_quantity },
+        { label: "Unit Price", value: isPayment ? "—" : formatCurrency(sale.unit_price) },
+        { label: "Total Billing", value: isPayment ? formatCurrency(sale.balance_paid || 0) : formatCurrency(sale.total_amount) },
+        { label: "Balance Paid", value: entrySummary.balancePaidLabel },
+        { label: "Date", value: formatDateLocale(sale.log_date || sale.date_created || sale.date_paid) },
+      ],
+      footer: (
+        <button
+          type="button"
+          onClick={() => setMobileDetail(null)}
+          className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700"
+        >
+          Close
+        </button>
+      ),
+    });
   };
 
   const confirmDeleteExpense = async () => {
@@ -257,7 +324,7 @@ export default function DashboardPage() {
         </button>
       </div>
 
-      {isAdministrator && <SalesReportSection refreshKey={reportRefreshKey} />}
+      {isAdministrator && !isMobile && <SalesReportSection refreshKey={reportRefreshKey} />}
 
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
         <div className="border-b border-slate-100 pb-3 space-y-3">
@@ -301,66 +368,90 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
-          <table className="w-full min-w-[520px] text-left text-xs whitespace-nowrap">
-            <thead className="bg-red-500 text-slate-100 font-bold uppercase tracking-wide">
-              <tr>
-                <th className="p-3 text-center">Expense</th>
-                <th className="p-3 text-center">Amount</th>
-                <th className="p-3 text-center">Date</th>
-                {isAdministrator && (
-                  <th className="p-3 text-center">Actions</th>
-                )}
-              </tr>
-            </thead>
-            <tbody className="font-medium text-slate-600">
-              {dailyExpenses.map((item) => (
-                <tr
-                  key={item.expenses_id}
-                  className="odd:bg-white even:bg-slate-50/70 hover:bg-slate-100/80 transition-colors"
-                >
-                  <td className="p-3 font-bold text-slate-800 text-center">
-                    {item.expenses}
-                  </td>
-                  <td className="p-3 text-red-600 font-bold text-center">
-                    {formatCurrency(item.amount)}
-                  </td>
-                  <td className="p-3 text-center">
-                    {formatDateLocale(item.date)}
-                  </td>
+        {isMobile ? (
+          <div className="space-y-2">
+            {dailyExpenses.map((item) => (
+              <button
+                key={item.expenses_id}
+                type="button"
+                onClick={() => openExpenseDetails(item)}
+                className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-bold text-slate-800">{item.expenses}</span>
+                  <span className="font-black text-red-600">{formatCurrency(item.amount)}</span>
+                </div>
+                <p className="mt-2 text-[11px] text-slate-500">{formatDateLocale(item.date)}</p>
+              </button>
+            ))}
+            {dailyExpenses.length === 0 && (
+              <p className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-400">
+                No expenses recorded for the selected period.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full min-w-[520px] text-left text-xs whitespace-nowrap">
+              <thead className="bg-red-500 text-slate-100 font-bold uppercase tracking-wide">
+                <tr>
+                  <th className="p-3 text-center">Expense</th>
+                  <th className="p-3 text-center">Amount</th>
+                  <th className="p-3 text-center">Date</th>
                   {isAdministrator && (
-                    <td className="p-3 text-center space-x-1">
-                      <button
-                        type="button"
-                        onClick={() => openEditExpense(item)}
-                        className="text-xs font-bold bg-amber-100 hover:bg-amber-500 hover:text-white px-2.5 py-1 rounded-lg"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setExpenseDeleteTarget(item)}
-                        className="text-xs font-bold bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-2.5 py-1 rounded-lg"
-                      >
-                        Delete
-                      </button>
-                    </td>
+                    <th className="p-3 text-center">Actions</th>
                   )}
                 </tr>
-              ))}
-              {dailyExpenses.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={isAdministrator ? 4 : 3}
-                    className="text-center py-4 text-slate-400"
+              </thead>
+              <tbody className="font-medium text-slate-600">
+                {dailyExpenses.map((item) => (
+                  <tr
+                    key={item.expenses_id}
+                    className="odd:bg-white even:bg-slate-50/70 hover:bg-slate-100/80 transition-colors"
                   >
-                    No expenses recorded for the selected period.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                    <td className="p-3 font-bold text-slate-800 text-center">
+                      {item.expenses}
+                    </td>
+                    <td className="p-3 text-red-600 font-bold text-center">
+                      {formatCurrency(item.amount)}
+                    </td>
+                    <td className="p-3 text-center">
+                      {formatDateLocale(item.date)}
+                    </td>
+                    {isAdministrator && (
+                      <td className="p-3 text-center space-x-1">
+                        <button
+                          type="button"
+                          onClick={() => openEditExpense(item)}
+                          className="text-xs font-bold bg-amber-100 hover:bg-amber-500 hover:text-white px-2.5 py-1 rounded-lg"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setExpenseDeleteTarget(item)}
+                          className="text-xs font-bold bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-2.5 py-1 rounded-lg"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+                {dailyExpenses.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={isAdministrator ? 4 : 3}
+                      className="text-center py-4 text-slate-400"
+                    >
+                      No expenses recorded for the selected period.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
@@ -380,51 +471,80 @@ export default function DashboardPage() {
             View Full Log &rarr;
           </Link>
         </div>
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
-          <table className="w-full min-w-[720px] text-left text-xs whitespace-nowrap">
-            <thead className="bg-red-500 text-slate-100 font-bold uppercase tracking-wide">
-              <tr>
-                <th className="p-3">Customer</th>
-                <th className="p-3">Product</th>
-                <th className="p-3">Type</th>
-                <th className="p-3 text-center">Traded</th>
-                <th className="p-3 text-right">Balance Paid</th>
-              </tr>
-            </thead>
-            <tbody className="font-medium text-slate-600">
-              {recentSales.map((sale) => {
-                const entrySummary = getSalesEntrySummary(sale);
-                return (
-                  <tr
-                    key={`${sale.entry_type}-${sale.sale_id}-${sale.log_date}`}
-                    className="odd:bg-white even:bg-slate-50/70 hover:bg-slate-100/80 transition-colors"
-                  >
-                    <td className="p-3 font-bold text-slate-800">
-                      {sale.customer_name}
-                    </td>
-                    <td className="p-3">
-                      {sale.brand} - {sale.weight_class}kg - {sale.product_status}
-                    </td>
-                    <td className="p-3">{entrySummary.typeLabel}</td>
-                    <td className="p-3 text-center font-semibold text-indigo-700">
-                      {sale.lpg_tank_variant || "-"}
-                    </td>
-                    <td className="p-3 text-right text-red-600 font-bold">
-                      {entrySummary.balancePaidLabel}
+        {isMobile ? (
+          <div className="space-y-2">
+            {recentSales.map((sale) => {
+              const entrySummary = getSalesEntrySummary(sale);
+              return (
+                <button
+                  key={`${sale.entry_type}-${sale.sale_id}-${sale.log_date}`}
+                  type="button"
+                  onClick={() => openSaleDetails(sale)}
+                  className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-bold text-slate-800">{sale.customer_name}</span>
+                    <span className="font-black text-red-600">{entrySummary.balancePaidLabel}</span>
+                  </div>
+                  <p className="mt-2 text-[11px] text-slate-500">
+                    {sale.brand} - {sale.weight_class}kg - {sale.product_status}
+                  </p>
+                </button>
+              );
+            })}
+            {recentSales.length === 0 && (
+              <p className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-400">
+                No sales recorded today.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full min-w-[720px] text-left text-xs whitespace-nowrap">
+              <thead className="bg-red-500 text-slate-100 font-bold uppercase tracking-wide">
+                <tr>
+                  <th className="p-3">Customer</th>
+                  <th className="p-3">Product</th>
+                  <th className="p-3">Type</th>
+                  <th className="p-3 text-center">Traded</th>
+                  <th className="p-3 text-right">Balance Paid</th>
+                </tr>
+              </thead>
+              <tbody className="font-medium text-slate-600">
+                {recentSales.map((sale) => {
+                  const entrySummary = getSalesEntrySummary(sale);
+                  return (
+                    <tr
+                      key={`${sale.entry_type}-${sale.sale_id}-${sale.log_date}`}
+                      className="odd:bg-white even:bg-slate-50/70 hover:bg-slate-100/80 transition-colors"
+                    >
+                      <td className="p-3 font-bold text-slate-800">
+                        {sale.customer_name}
+                      </td>
+                      <td className="p-3">
+                        {sale.brand} - {sale.weight_class}kg - {sale.product_status}
+                      </td>
+                      <td className="p-3">{entrySummary.typeLabel}</td>
+                      <td className="p-3 text-center font-semibold text-indigo-700">
+                        {sale.lpg_tank_variant || "-"}
+                      </td>
+                      <td className="p-3 text-right text-red-600 font-bold">
+                        {entrySummary.balancePaidLabel}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {recentSales.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="text-center py-4 text-slate-400">
+                      No sales recorded today.
                     </td>
                   </tr>
-                );
-              })}
-              {recentSales.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="text-center py-4 text-slate-400">
-                    No sales recorded today.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
         {pagination.totalPages > 1 && (
           <nav
             className="flex justify-end gap-2"
@@ -464,6 +584,15 @@ export default function DashboardPage() {
         onSuccess={handleExpenseSuccess}
         editingExpense={editingExpense}
       />
+
+      {mobileDetail && (
+        <ResponsiveDetailModal
+          title={mobileDetail.title}
+          onClose={() => setMobileDetail(null)}
+          details={mobileDetail.details}
+          footer={mobileDetail.footer}
+        />
+      )}
 
       {isAdministrator && expenseDeleteTarget && (
         <Modal

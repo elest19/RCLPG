@@ -55,7 +55,7 @@ export const createSale = [
     const sale = await salesService.createSale({
       customerId: req.body.customerId,
       customerName: req.body.customerName,
-      fbName: req.body.fbName,
+      location: req.body.location,
       phoneNumber: req.body.phoneNumber,
       productId: req.body.productId,
       quantity: req.body.quantity,
@@ -84,7 +84,7 @@ export const updateSale = [
   asyncHandler(async (req, res) => {
     const sale = await salesService.updateSale(req.params.saleId, {
       customerName: req.body.customerName,
-      fbName: req.body.fbName,
+      location: req.body.location,
       phoneNumber: req.body.phoneNumber,
       productId: req.body.productId,
       quantity: req.body.quantity,

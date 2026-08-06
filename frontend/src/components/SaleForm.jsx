@@ -75,7 +75,7 @@ export default function SaleForm({
   const [customerName, setCustomerName] = useState(
     initialValues?.customerName || "",
   );
-  const [fbName, setFbName] = useState(initialValues?.fbName || "");
+  const [location, setLocation] = useState(initialValues?.location || "");
   const [phoneNumber, setPhoneNumber] = useState(
     initialValues?.phoneNumber || "",
   );
@@ -274,7 +274,7 @@ export default function SaleForm({
     onSubmit({
       customerId: mode === "existing" ? customerId : undefined,
       customerName,
-      fbName,
+      location,
       phoneNumber,
       priceType,
       paymentMethod: showPaymentMethod ? paymentMethod : "Fully Paid",
@@ -364,15 +364,15 @@ export default function SaleForm({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label
-              htmlFor="fb-name"
+              htmlFor="location"
               className="block text-xs font-bold uppercase text-slate-500 mb-1"
             >
-              FB Name
+              Location
             </label>
             <input
-              id="fb-name"
-              value={fbName}
-              onChange={(e) => setFbName(e.target.value)}
+              id="location"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
               className="w-full text-sm p-3 border border-slate-200 rounded-xl"
             />
           </div>

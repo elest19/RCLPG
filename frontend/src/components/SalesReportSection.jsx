@@ -26,6 +26,7 @@ import {
 } from "recharts";
 import { api, formatCurrency } from "../api/client";
 import { useToast } from "../context/ToastContext";
+import { formatProductMixLabel } from "../utils/productMix.js";
 import DownloadSalesReportModal from "./DownloadSalesReportModal";
 
 const BRAND_PALETTE = [
@@ -538,12 +539,15 @@ export default function SalesReportSection({ refreshKey = 0 }) {
                     Product & Inventory Mix
                   </Text>
                   <Stack gap="sm">
-                    {(report?.productMix || []).map((item) => (
-                      <div key={item.weightClass}>
+                    {(report?.productMix || []).map((item) => {
+                      const mixLabel = formatProductMixLabel(item);
+
+                      return (
+                      <div key={`${item.brand || 'unknown'}-${item.weightClass ?? item.weight_class}`}>
                         <Group justify="space-between" mb={4}>
                           <Group gap="xs">
                             <Text size="sm" fw={600}>
-                              {item.weightClass}kg
+                              {mixLabel}
                             </Text>
                             <Badge size="sm" variant="light">
                               {item.unitsSold} units
@@ -563,7 +567,8 @@ export default function SalesReportSection({ refreshKey = 0 }) {
                           {item.percentage}% of total units
                         </Text>
                       </div>
-                    ))}
+                      );
+                    })}
                   </Stack>
                 </Card>
               </Stack>

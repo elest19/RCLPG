@@ -17,6 +17,8 @@ export default function DownloadSalesLogModal({ onClose }) {
   const [period, setPeriod] = useState('today');
   const [monthValue, setMonthValue] = useState('');
   const [yearValue, setYearValue] = useState(String(new Date().getFullYear()));
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleDownload = async () => {
@@ -38,6 +40,19 @@ export default function DownloadSalesLogModal({ onClose }) {
           return;
         }
         params.startDate = `${yearValue}-01-01`;
+      }
+
+      if (period === 'custom') {
+        if (!startDate || !endDate) {
+          showToast('Date Range Required', 'Select both start and end dates.', 'error');
+          return;
+        }
+        if (new Date(startDate) > new Date(endDate)) {
+          showToast('Invalid Range', 'Start date cannot be after end date.', 'error');
+          return;
+        }
+        params.startDate = startDate;
+        params.endDate = endDate;
       }
 
       if (period === 'first_half' || period === 'second_half') {
@@ -116,6 +131,35 @@ export default function DownloadSalesLogModal({ onClose }) {
               onChange={(e) => setYearValue(e.target.value)}
               className="w-full text-sm p-2.5 border border-slate-200 rounded-xl"
             />
+          </div>
+        )}
+
+        {period === 'custom' && (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="log-start-date" className="block text-xs font-bold uppercase text-slate-500 mb-1">
+                Start Date
+              </label>
+              <input
+                id="log-start-date"
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full text-sm p-2.5 border border-slate-200 rounded-xl"
+              />
+            </div>
+            <div>
+              <label htmlFor="log-end-date" className="block text-xs font-bold uppercase text-slate-500 mb-1">
+                End Date
+              </label>
+              <input
+                id="log-end-date"
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full text-sm p-2.5 border border-slate-200 rounded-xl"
+              />
+            </div>
           </div>
         )}
 

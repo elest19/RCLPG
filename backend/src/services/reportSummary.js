@@ -110,7 +110,7 @@ export function buildSalesReportSummary({
     creditOnlyCostOfGoods, // Credit-only cost of goods
 
     //Cards
-    netIncomeQualifiedFormula: `(${formatCurrencyValue(fullyPaidSalesRevenue)} + ${formatCurrencyValue(expectedNetIncome)}) - ${formatCurrencyValue(totalExpenses)}`, // Total Net Income
+    netIncomeQualifiedFormula: `(${formatCurrencyValue(netIncomeFullyPaid)} + ${formatCurrencyValue(expectedNetIncome)}) - ${formatCurrencyValue(totalExpenses)}`, // Total Net Income
     netIncomeFullyPaidFormula: `${formatCurrencyValue(fullyPaidSalesRevenue)} - ${formatCurrencyValue(fullyPaidSalesCostOfGoods)}`, // Fully Paid Net Income
     expectedNetIncomeFormula: `${formatCurrencyValue(creditOnlySalesRevenue)} - ${formatCurrencyValue(creditOnlyCostOfGoods)}`, // Expected Credit Net Income
     totalCreditBalance: creditBalance, // Remaining Credit Balance

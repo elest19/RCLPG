@@ -3,9 +3,11 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import LoadingSpinner from '../components/LoadingSpinner';
+import ResponsiveDetailModal from '../components/ResponsiveDetailModal';
 import PasswordField, { MaskedPasswordField, ProfileField } from '../components/PasswordField';
 import ViewUserModal from '../components/ViewUserModal';
 import AddMemberModal from '../components/AddMemberModal';
+import useIsMobile from '../hooks/useIsMobile';
 import { isAdministratorRole } from '../utils/roles';
 import { formatRoleLabel } from '../utils/roles';
 import { subscribeRealtime } from '../utils/realtime';
@@ -23,6 +25,8 @@ export default function AdminProfilePage() {
   const [saving, setSaving] = useState(false);
   const [viewUserId, setViewUserId] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [mobileDetail, setMobileDetail] = useState(null);
+  const isMobile = useIsMobile();
   const [form, setForm] = useState({
     name: '',
     username: '',
@@ -120,6 +124,31 @@ export default function AdminProfilePage() {
       email: profile?.email || '',
       phoneNumber: profile?.phoneNumber || '',
       password: '',
+    });
+  };
+
+  const openUserDetails = (user) => {
+    setMobileDetail({
+      title: 'Staff Details',
+      details: [
+        { label: 'Full Name', value: user.name },
+        { label: 'Username', value: user.username },
+        { label: 'Email', value: user.email || '—' },
+        { label: 'Phone Number', value: user.phoneNumber || '—' },
+        { label: 'Role', value: formatRoleLabel(user.role) },
+      ],
+      footer: (
+        <button
+          type="button"
+          onClick={() => {
+            setMobileDetail(null);
+            setViewUserId(user.adminId);
+          }}
+          className="rounded-lg bg-red-600 px-3 py-2 text-xs font-bold text-white"
+        >
+          View Profile
+        </button>
+      ),
     });
   };
 
@@ -261,65 +290,103 @@ export default function AdminProfilePage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Full Name</th>
-                <th className="px-4 py-3">Username</th>
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">Phone Number</th>
-                <th className="px-4 py-3">Role</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {usersLoading ? (
+        {isMobile ? (
+          <div className="space-y-2 p-4">
+            {usersLoading ? (
+              <p className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-400">Loading staff list…</p>
+            ) : usersError ? (
+              <p className="rounded-xl border border-dashed border-red-200 p-4 text-center text-sm text-red-500">{usersError}</p>
+            ) : users.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-400">No {showArchived ? 'archived' : 'active'} staff found.</p>
+            ) : (
+              users.map((user) => (
+                <button
+                  key={user.adminId}
+                  type="button"
+                  onClick={() => openUserDetails(user)}
+                  className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-bold text-slate-800">{user.name}</span>
+                    <span className="inline-flex rounded-lg bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-700">
+                      {formatRoleLabel(user.role)}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-[11px] text-slate-500">{user.username}</p>
+                </button>
+              ))
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
-                    Loading staff list…
-                  </td>
+                  <th className="px-4 py-3">Full Name</th>
+                  <th className="px-4 py-3">Username</th>
+                  <th className="px-4 py-3">Email</th>
+                  <th className="px-4 py-3">Phone Number</th>
+                  <th className="px-4 py-3">Role</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
-              ) : usersError ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-red-500">
-                    {usersError}
-                  </td>
-                </tr>
-              ) : users.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
-                    No {showArchived ? 'archived' : 'active'} staff found.
-                  </td>
-                </tr>
-              ) : (
-                users.map((user) => (
-                  <tr key={user.adminId} className="hover:bg-slate-50/80">
-                    <td className="px-4 py-3 font-semibold text-slate-900">{user.name}</td>
-                    <td className="px-4 py-3 text-slate-600">{user.username}</td>
-                    <td className="px-4 py-3 text-slate-600">{user.email || '—'}</td>
-                    <td className="px-4 py-3 text-slate-600">{user.phoneNumber || '—'}</td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex px-2 py-0.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-700">
-                        {formatRoleLabel(user.role)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => setViewUserId(user.adminId)}
-                        className="text-xs font-bold text-red-600 hover:text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-50"
-                      >
-                        View
-                      </button>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {usersLoading ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                      Loading staff list…
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ) : usersError ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-red-500">
+                      {usersError}
+                    </td>
+                  </tr>
+                ) : users.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                      No {showArchived ? 'archived' : 'active'} staff found.
+                    </td>
+                  </tr>
+                ) : (
+                  users.map((user) => (
+                    <tr key={user.adminId} className="hover:bg-slate-50/80">
+                      <td className="px-4 py-3 font-semibold text-slate-900">{user.name}</td>
+                      <td className="px-4 py-3 text-slate-600">{user.username}</td>
+                      <td className="px-4 py-3 text-slate-600">{user.email || '—'}</td>
+                      <td className="px-4 py-3 text-slate-600">{user.phoneNumber || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex px-2 py-0.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-700">
+                          {formatRoleLabel(user.role)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => setViewUserId(user.adminId)}
+                          className="text-xs font-bold text-red-600 hover:text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-50"
+                        >
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
+
+      {mobileDetail && (
+        <ResponsiveDetailModal
+          title={mobileDetail.title}
+          onClose={() => setMobileDetail(null)}
+          details={mobileDetail.details}
+          footer={mobileDetail.footer}
+        />
+      )}
 
       {viewUserId && (
         <ViewUserModal

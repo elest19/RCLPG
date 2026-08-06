@@ -9,8 +9,10 @@ import RecordSaleModal from "../components/RecordSaleModal";
 import RecordExpenseModal from "../components/RecordExpenseModal";
 import DownloadSalesLogModal from "../components/DownloadSalesLogModal";
 import Modal from "../components/Modal";
+import ResponsiveDetailModal from "../components/ResponsiveDetailModal";
 import { subscribeRealtime } from "../utils/realtime";
 import { getSalesEntrySummary } from "../utils/salesTable";
+import useIsMobile from "../hooks/useIsMobile";
 
 export default function SalesLogPage() {
   const { showToast } = useToast();
@@ -22,6 +24,8 @@ export default function SalesLogPage() {
   const [dateFilter, setDateFilter] = useState("");
   const [customerNameFilter, setCustomerNameFilter] = useState("");
   const [productFilter, setProductFilter] = useState("");
+  const [brandFilter, setBrandFilter] = useState("");
+  const [weightClassFilter, setWeightClassFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [selectedSaleId, setSelectedSaleId] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -40,15 +44,54 @@ export default function SalesLogPage() {
   const [expenseEndDate, setExpenseEndDate] = useState("");
   const [sortConfig, setSortConfig] = useState({ field: "log_date", direction: "desc" });
   const [page, setPage] = useState(1);
+  const [mobileDetail, setMobileDetail] = useState(null);
+  const isMobile = useIsMobile();
   const pageSize = 10;
 
   const selectedSale = sales.find((s) => s.sale_id === selectedSaleId);
 
+  const filteredSales = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    return sales.filter((sale) => {
+      const matchesSearch = !query || [
+        sale.customer_name,
+        sale.brand,
+        sale.product_status,
+        sale.weight_class,
+        sale.lpg_tank_variant,
+        sale.payment_option,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query));
+
+      const matchesCustomer = !customerNameFilter || String(sale.customer_name || "")
+        .toLowerCase()
+        .includes(customerNameFilter.trim().toLowerCase());
+
+      const matchesDate = !dateFilter || (() => {
+        const rowDate = new Date(sale.log_date || sale.date_created || sale.date_paid || 0);
+        const filterDate = new Date(dateFilter);
+        return rowDate.getFullYear() === filterDate.getFullYear()
+          && rowDate.getMonth() === filterDate.getMonth()
+          && rowDate.getDate() === filterDate.getDate();
+      })();
+
+      const matchesBrand = !brandFilter || String(sale.brand || "").toLowerCase() === brandFilter.toLowerCase();
+      const matchesWeight = !weightClassFilter || String(sale.weight_class) === String(weightClassFilter);
+      const matchesProduct = !productFilter || [sale.brand, sale.weight_class, sale.product_status]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(productFilter.trim().toLowerCase()));
+
+      return matchesSearch && matchesCustomer && matchesDate && matchesBrand && matchesWeight && matchesProduct;
+    });
+  }, [sales, search, customerNameFilter, dateFilter, productFilter, brandFilter, weightClassFilter]);
+
   const sortedSales = useMemo(() => {
     const field = sortConfig.field;
-    if (!field) return sales;
+    if (!field) return filteredSales;
 
-    const mapped = sales.map((sale) => {
+    const mapped = filteredSales.map((sale) => {
       const isPayment = sale.entry_type === "payment";
       const logDate = new Date(sale.log_date || sale.date_created || sale.date_paid || 0);
       return {
@@ -98,7 +141,7 @@ export default function SalesLogPage() {
     }
 
     return mapped.map((item) => item.sale);
-  }, [sales, sortConfig]);
+  }, [filteredSales, sortConfig]);
 
   const totalPages = Math.max(1, Math.ceil(sortedSales.length / pageSize));
   const pagedSales = sortedSales.slice((page - 1) * pageSize, page * pageSize);
@@ -111,7 +154,7 @@ export default function SalesLogPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, dateFilter, customerNameFilter, productFilter]);
+  }, [search, dateFilter, customerNameFilter, productFilter, brandFilter, weightClassFilter]);
 
   const handleSort = (field) => {
     setSortConfig((prev) =>
@@ -194,6 +237,7 @@ export default function SalesLogPage() {
   }, [loadData, loadExpenses]);
 
   const brands = [...new Set(products.map((p) => p.brand))];
+  const weightOptions = [...new Set(products.map((p) => String(p.weight_class)).filter(Boolean))];
 
   const handleOverride = async (payload) => {
     if (!selectedSaleId) return;
@@ -282,6 +326,67 @@ export default function SalesLogPage() {
     setExpenseModalOpen(true);
   };
 
+  const openSaleDetails = (sale) => {
+    const isPayment = sale.entry_type === "payment";
+    const entrySummary = getSalesEntrySummary(sale);
+    setMobileDetail({
+      title: "Sales Log Details",
+      details: [
+        { label: "Customer", value: sale.customer_name },
+        { label: "Product", value: `${sale.brand} - ${sale.weight_class}kg - ${sale.product_status}` },
+        { label: "Type", value: entrySummary.typeLabel },
+        { label: "Traded", value: sale.lpg_tank_variant || "-" },
+        { label: "Quantity", value: isPayment ? "—" : sale.sale_quantity },
+        { label: "Unit Price", value: isPayment ? "—" : formatCurrency(sale.unit_price) },
+        { label: "Total Billing", value: isPayment ? formatCurrency(sale.balance_paid || 0) : formatCurrency(sale.total_amount) },
+        { label: "Balance Paid", value: entrySummary.balancePaidLabel },
+        { label: "Date", value: formatDateLocale(sale.log_date || sale.date_created || sale.date_paid) },
+      ],
+      footer: isAdministrator ? (
+        <>
+          {!isPayment ? (
+            <button
+              type="button"
+              onClick={() => {
+                setMobileDetail(null);
+                setSelectedSaleId(sale.sale_id);
+              }}
+              className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700"
+            >
+              Override
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setMobileDetail(null);
+                setPaymentEditTarget(sale);
+                setPaymentAmount(sale.balance_paid || "");
+              }}
+              className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700"
+            >
+              Override
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              setMobileDetail(null);
+              if (isPayment) {
+                setPaymentDeleteTarget(sale);
+              } else {
+                setDeleteTarget(sale);
+              }
+            }}
+            className="rounded-lg bg-red-50 px-3 py-2 text-xs font-bold text-red-600"
+          >
+            Delete
+          </button>
+        </>
+      ) : null,
+    });
+  };
+
   const closeExpenseModal = () => {
     setExpenseModalOpen(false);
     setExpenseEditTarget(null);
@@ -332,16 +437,18 @@ export default function SalesLogPage() {
             )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 flex-1">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                <span className="mb-1 block">Search</span>
-                <input
-                  type="search"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search transactions"
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
-                />
-              </label>
+              {!isMobile && (
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  <span className="mb-1 block">Search</span>
+                  <input
+                    type="search"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search transactions"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                  />
+                </label>
+              )}
               <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 <span className="mb-1 block">Customer</span>
                 <input
@@ -361,16 +468,51 @@ export default function SalesLogPage() {
                   className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
                 />
               </label>
-              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                <span className="mb-1 block">Product</span>
-                <input
-                  type="text"
-                  value={productFilter}
-                  onChange={(e) => setProductFilter(e.target.value)}
-                  placeholder="Brand, weight, status"
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
-                />
-              </label>
+              {isMobile ? (
+                <>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    <span className="mb-1 block">Brand</span>
+                    <select
+                      value={brandFilter}
+                      onChange={(e) => setBrandFilter(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                    >
+                      <option value="">All Brands</option>
+                      {brands.map((brand) => (
+                        <option key={brand} value={brand}>
+                          {brand}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    <span className="mb-1 block">Weight Class</span>
+                    <select
+                      value={weightClassFilter}
+                      onChange={(e) => setWeightClassFilter(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                    >
+                      <option value="">All Weights</option>
+                      {weightOptions.map((weight) => (
+                        <option key={weight} value={weight}>
+                          {weight}kg
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              ) : (
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  <span className="mb-1 block">Product</span>
+                  <input
+                    type="text"
+                    value={productFilter}
+                    onChange={(e) => setProductFilter(e.target.value)}
+                    placeholder="Brand, weight, status"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                  />
+                </label>
+              )}
             </div>
           </div>
         </div>
@@ -404,7 +546,7 @@ export default function SalesLogPage() {
               initialValues={{
                 customerId: selectedSale.customer_id,
                 customerName: selectedSale.customer_name,
-                fbName: selectedSale.fb_name,
+                location: selectedSale.location,
                 phoneNumber: selectedSale.phone_number,
                 priceType: selectedSale.price_type,
                 brand: selectedSale.brand,
@@ -420,140 +562,169 @@ export default function SalesLogPage() {
           </div>
         )}
 
-        <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm mt-2">
-          <table className="w-full min-w-[1100px] text-left text-xs sm:text-sm whitespace-nowrap">
-            <thead className="bg-red-500 text-slate-100 font-bold uppercase tracking-wider">
-              <tr>
-                {[
-                  { key: "log_date", label: "Log Date", align: "text-left" },
-                  { key: "product", label: "Product", align: "text-left" },
-                  { key: "customer", label: "Customer", align: "text-left" },
-                  { key: "type", label: "Type", align: "text-left" },
-                  { key: "traded", label: "Traded", align: "text-center" },
-                  { key: "qty", label: "Qty", align: "text-center" },
-                  { key: "unit_price", label: "Unit Price", align: "text-right" },
-                  { key: "total_billing", label: "Total Billing", align: "text-right" },
-                  { key: "balance_paid", label: "Balance Paid", align: "text-right" },
-                ].map((column) => (
-                  <th
-                    key={column.key}
-                    className={`p-3 ${column.align} cursor-pointer select-none`}
-                    onClick={() => handleSort(column.key)}
-                  >
-                    <div className="inline-flex items-center gap-1">
-                      {column.label}
-                      {sortConfig.field === column.key && (
-                        <span className="text-xs">{sortConfig.direction === "asc" ? "▲" : "▼"}</span>
-                      )}
-                    </div>
-                  </th>
-                ))}
-                {isAdministrator && (
-                  <th className="p-3 text-center">Actions</th>
-                )}
-              </tr>
-            </thead>
-            <tbody className="font-medium text-slate-600">
-              {pagedSales.map((sale) => {
-                const isPayment = sale.entry_type === "payment";
-                const entrySummary = getSalesEntrySummary(sale);
-                return (
-                  <tr
-                    key={`${sale.entry_type}-${sale.sale_id}-${sale.log_date}`}
-                    className={
-                      selectedSaleId === sale.sale_id
-                        ? "bg-red-50"
-                        : "odd:bg-white even:bg-slate-50/70 hover:bg-slate-100/80 transition-colors"
-                    }
-                  >
-                    <td className="p-3">
-                      {formatDateLocale(sale.log_date || sale.date_created || sale.date_paid)}
-                    </td>
-                    <td className="p-3">
-                        {sale.weight_class}kg - {sale.brand}
-                    </td>
-                    <td className="p-3 font-bold text-slate-800 ">
-                      {sale.customer_name}
-                    </td>
-                    <td className="p-3">
-                      {entrySummary.typeLabel}
-                    </td>
-                    <td className="p-3 font-semibold text-indigo-700 text-center">
-                        {sale.lpg_tank_variant}
-                    </td>
-                    <td className="p-3 text-center font-bold">
-                      {
-                        isPayment ? " " : sale.sale_quantity
-                      }
-                    </td>
-                    <td className="p-3 text-center">
-                      {isPayment ? "" : formatCurrency(sale.unit_price)}
-                    </td>
-                    <td className="p-3 text-center text-red-600 font-extrabold">
-                      {isPayment ? formatCurrency(sale.balance_paid || 0) : formatCurrency(sale.total_amount)}
-                    </td>
-                    <td className="p-3 text-center font-semibold text-slate-700">
-                      {entrySummary.balancePaidLabel}
-                    </td>
-                    {isAdministrator && (
-                      <td className="p-3 text-center space-x-1">
-                        {!isPayment && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedSaleId(sale.sale_id)}
-                              className="text-xs font-bold bg-slate-100 hover:bg-slate-800 hover:text-white px-2 py-1 rounded-lg"
-                            >
-                              Override
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeleteTarget(sale)}
-                              className="text-xs font-bold bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-2 py-1 rounded-lg"
-                            >
-                              Delete
-                            </button>
-                          </>
-                        )}
-                        {isPayment && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setPaymentEditTarget(sale);
-                                setPaymentAmount(sale.balance_paid || "");
-                              }}
-                              className="text-xs font-bold bg-slate-100 hover:bg-slate-800 hover:text-white px-2 py-1 rounded-lg"
-                            >
-                              Override
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setPaymentDeleteTarget(sale)}
-                              className="text-xs font-bold bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-2 py-1 rounded-lg"
-                            >
-                              Delete
-                            </button>
-                          </>
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-              {sales.length === 0 && (
+        {isMobile ? (
+          <div className="space-y-2 mt-2">
+            {pagedSales.map((sale) => {
+              const entrySummary = getSalesEntrySummary(sale);
+              return (
+                <button
+                  key={`${sale.entry_type}-${sale.sale_id}-${sale.log_date}`}
+                  type="button"
+                  onClick={() => openSaleDetails(sale)}
+                  className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-bold text-slate-800">{sale.customer_name}</span>
+                    <span className="font-black text-red-600">{entrySummary.balancePaidLabel}</span>
+                  </div>
+                  <p className="mt-2 text-[11px] text-slate-500">
+                    {sale.brand} - {sale.weight_class}kg - {sale.product_status}
+                  </p>
+                </button>
+              );
+            })}
+            {pagedSales.length === 0 && (
+              <p className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-400">
+                No transactions found.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm mt-2">
+            <table className="w-full min-w-[1100px] text-left text-xs sm:text-sm whitespace-nowrap">
+              <thead className="bg-red-500 text-slate-100 font-bold uppercase tracking-wider">
                 <tr>
-                  <td
-                    colSpan={isAdministrator ? 11 : 10}
-                    className="text-center py-8 text-slate-400"
-                  >
-                    No transactions found.
-                  </td>
+                  {[
+                    { key: "log_date", label: "Log Date", align: "text-left" },
+                    { key: "product", label: "Product", align: "text-left" },
+                    { key: "customer", label: "Customer", align: "text-left" },
+                    { key: "type", label: "Type", align: "text-left" },
+                    { key: "traded", label: "Traded", align: "text-center" },
+                    { key: "qty", label: "Qty", align: "text-center" },
+                    { key: "unit_price", label: "Unit Price", align: "text-right" },
+                    { key: "total_billing", label: "Total Billing", align: "text-right" },
+                    { key: "balance_paid", label: "Balance Paid", align: "text-right" },
+                  ].map((column) => (
+                    <th
+                      key={column.key}
+                      className={`p-3 ${column.align} cursor-pointer select-none`}
+                      onClick={() => handleSort(column.key)}
+                    >
+                      <div className="inline-flex items-center gap-1">
+                        {column.label}
+                        {sortConfig.field === column.key && (
+                          <span className="text-xs">{sortConfig.direction === "asc" ? "▲" : "▼"}</span>
+                        )}
+                      </div>
+                    </th>
+                  ))}
+                  {isAdministrator && (
+                    <th className="p-3 text-center">Actions</th>
+                  )}
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="font-medium text-slate-600">
+                {pagedSales.map((sale) => {
+                  const isPayment = sale.entry_type === "payment";
+                  const entrySummary = getSalesEntrySummary(sale);
+                  return (
+                    <tr
+                      key={`${sale.entry_type}-${sale.sale_id}-${sale.log_date}`}
+                      className={
+                        selectedSaleId === sale.sale_id
+                          ? "bg-red-50"
+                          : "odd:bg-white even:bg-slate-50/70 hover:bg-slate-100/80 transition-colors"
+                      }
+                    >
+                      <td className="p-3">
+                        {formatDateLocale(sale.log_date || sale.date_created || sale.date_paid)}
+                      </td>
+                      <td className="p-3">
+                          {sale.weight_class}kg - {sale.brand}
+                      </td>
+                      <td className="p-3 font-bold text-slate-800 ">
+                        {sale.customer_name}
+                      </td>
+                      <td className="p-3">
+                        {entrySummary.typeLabel}
+                      </td>
+                      <td className="p-3 font-semibold text-indigo-700 text-center">
+                          {sale.lpg_tank_variant}
+                      </td>
+                      <td className="p-3 text-center font-bold">
+                        {
+                          isPayment ? " " : sale.sale_quantity
+                        }
+                      </td>
+                      <td className="p-3 text-center">
+                        {isPayment ? "" : formatCurrency(sale.unit_price)}
+                      </td>
+                      <td className="p-3 text-center text-red-600 font-extrabold">
+                        {isPayment ? formatCurrency(sale.balance_paid || 0) : formatCurrency(sale.total_amount)}
+                      </td>
+                      <td className="p-3 text-center font-semibold text-slate-700">
+                        {entrySummary.balancePaidLabel}
+                      </td>
+                      {isAdministrator && (
+                        <td className="p-3 text-center space-x-1">
+                          {!isPayment && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedSaleId(sale.sale_id)}
+                                className="text-xs font-bold bg-slate-100 hover:bg-slate-800 hover:text-white px-2 py-1 rounded-lg"
+                              >
+                                Override
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeleteTarget(sale)}
+                                className="text-xs font-bold bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-2 py-1 rounded-lg"
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
+                          {isPayment && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPaymentEditTarget(sale);
+                                  setPaymentAmount(sale.balance_paid || "");
+                                }}
+                                className="text-xs font-bold bg-slate-100 hover:bg-slate-800 hover:text-white px-2 py-1 rounded-lg"
+                              >
+                                Override
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setPaymentDeleteTarget(sale)}
+                                className="text-xs font-bold bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-2 py-1 rounded-lg"
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+                {pagedSales.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={isAdministrator ? 11 : 10}
+                      className="text-center py-8 text-slate-400"
+                    >
+                      No transactions found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {sortedSales.length > pageSize && (
           <div className="flex items-center justify-between gap-3 px-4 py-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-600">
@@ -577,6 +748,15 @@ export default function SalesLogPage() {
               Next
             </button>
           </div>
+        )}
+
+        {mobileDetail && (
+          <ResponsiveDetailModal
+            title={mobileDetail.title}
+            onClose={() => setMobileDetail(null)}
+            details={mobileDetail.details}
+            footer={mobileDetail.footer}
+          />
         )}
 
         {isAdministrator && deleteTarget && (
@@ -771,61 +951,109 @@ export default function SalesLogPage() {
             )}
           </div>
         </div>
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="w-full min-w-[480px] text-left text-xs whitespace-nowrap">
-            <thead className="bg-red-500 text-slate-100 font-bold uppercase tracking-wide">
-              <tr>
-                <th className="p-3 text-center">Expense</th>
-                <th className="p-3 text-center">Amount</th>
-                <th className="p-3 text-center">Date</th>
-                {isAdministrator && <th className="p-3 text-center">Actions</th>}
-              </tr>
-            </thead>
-            <tbody className="font-medium text-slate-600">
-              {expenses.map((item) => (
-                <tr
-                  key={item.expenses_id}
-                  className="odd:bg-white even:bg-slate-50/70 hover:bg-slate-100/80 transition-colors"
-                >
-                  <td className="p-3 font-bold text-slate-800 text-center">
-                    {item.expenses}
-                  </td>
-                  <td className="p-3 text-red-600 font-bold text-center">
-                    {formatCurrency(item.amount)}
-                  </td>
-                  <td className="p-3 text-center">
-                    {formatDateLocale(item.date)}
-                  </td>
+        {isMobile ? (
+          <div className="space-y-2">
+            {expenses.map((item) => (
+              <div
+                key={item.expenses_id}
+                className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+              >
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Expense</p>
+                    <p className="mt-1 font-bold text-slate-800">{item.expenses}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Amount</p>
+                    <p className="mt-1 font-black text-red-600">{formatCurrency(item.amount)}</p>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-[11px] text-slate-500">
+                  <span>{formatDateLocale(item.date)}</span>
                   {isAdministrator && (
-                    <td className="p-3 text-center space-x-1">
+                    <div className="flex gap-2">
                       <button
                         type="button"
                         onClick={() => openExpenseEditor(item)}
-                        className="text-xs font-bold bg-amber-100 hover:bg-amber-500 hover:text-white px-2.5 py-1 rounded-lg"
+                        className="rounded-lg bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700"
                       >
                         Edit
                       </button>
                       <button
                         type="button"
                         onClick={() => setExpenseDeleteTarget(item)}
-                        className="text-xs font-bold bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-2.5 py-1 rounded-lg"
+                        className="rounded-lg bg-red-50 px-2.5 py-1 text-xs font-bold text-red-600"
                       >
                         Delete
                       </button>
-                    </td>
+                    </div>
                   )}
-                </tr>
-              ))}
-              {expenses.length === 0 && (
+                </div>
+              </div>
+            ))}
+            {expenses.length === 0 && (
+              <p className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-400">
+                No expenses recorded for the selected period.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+            <table className="w-full min-w-[480px] text-left text-xs whitespace-nowrap">
+              <thead className="bg-red-500 text-slate-100 font-bold uppercase tracking-wide">
                 <tr>
-                  <td colSpan={3} className="text-center py-4 text-slate-400">
-                    No expenses recorded for the selected period.
-                  </td>
+                  <th className="p-3 text-center">Expense</th>
+                  <th className="p-3 text-center">Amount</th>
+                  <th className="p-3 text-center">Date</th>
+                  {isAdministrator && <th className="p-3 text-center">Actions</th>}
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="font-medium text-slate-600">
+                {expenses.map((item) => (
+                  <tr
+                    key={item.expenses_id}
+                    className="odd:bg-white even:bg-slate-50/70 hover:bg-slate-100/80 transition-colors"
+                  >
+                    <td className="p-3 font-bold text-slate-800 text-center">
+                      {item.expenses}
+                    </td>
+                    <td className="p-3 text-red-600 font-bold text-center">
+                      {formatCurrency(item.amount)}
+                    </td>
+                    <td className="p-3 text-center">
+                      {formatDateLocale(item.date)}
+                    </td>
+                    {isAdministrator && (
+                      <td className="p-3 text-center space-x-1">
+                        <button
+                          type="button"
+                          onClick={() => openExpenseEditor(item)}
+                          className="text-xs font-bold bg-amber-100 hover:bg-amber-500 hover:text-white px-2.5 py-1 rounded-lg"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setExpenseDeleteTarget(item)}
+                          className="text-xs font-bold bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-2.5 py-1 rounded-lg"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+                {expenses.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="text-center py-4 text-slate-400">
+                      No expenses recorded for the selected period.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </div>
   </div>
