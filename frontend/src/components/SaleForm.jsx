@@ -195,6 +195,17 @@ export default function SaleForm({
     );
   }, [customers]);
 
+  useEffect(() => {
+    if (mode !== "existing" || !customerId) return;
+
+    const selected = customers.find((c) => c.customer_id === customerId);
+    if (!selected) return;
+
+    setCustomerName(selected.name || "");
+    setLocation(selected.location || "");
+    setPhoneNumber(selected.phone_number || "");
+  }, [mode, customerId, customers]);
+
   const selectedProduct = filteredProducts.find(
     (p) => p.product_id === productId,
   );

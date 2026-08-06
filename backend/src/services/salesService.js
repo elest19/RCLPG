@@ -403,6 +403,19 @@ export async function createSale(payload) {
       phoneNumber: payload.phoneNumber,
     });
 
+    const submittedLocation = payload.location?.trim();
+    const existingLocation = customer.location || "";
+    if (
+      payload.customerId &&
+      submittedLocation !== existingLocation
+    ) {
+      await customerService.updateCustomerLocation(
+        customer.customer_id,
+        submittedLocation,
+        client,
+      );
+    }
+
     const totalAmount = Number(
       (payload.quantity * payload.unitPrice).toFixed(2),
     );

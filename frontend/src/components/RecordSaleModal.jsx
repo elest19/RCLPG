@@ -22,7 +22,7 @@ export default function RecordSaleModal({ open, onClose, onSuccess }) {
     try {
       setLoading(true);
       const [productsRes, customersRes] = await Promise.all([
-        api.getProducts(),
+        api.getProducts({ allInstances: "true" }),
         api.getCustomers(),
       ]);
       setProducts(productsRes.data);
@@ -75,7 +75,7 @@ export default function RecordSaleModal({ open, onClose, onSuccess }) {
         ? `${product.brand} (${productLabel(product)})`
         : payload.productId,
       customerName: customer?.name || payload.customerName,
-      location: customer?.location || payload.location,
+      location: payload.location,
       phoneNumber: customer?.phone_number || payload.phoneNumber,
       total: payload.quantity * payload.unitPrice,
     });

@@ -178,7 +178,7 @@ export default function SalesLogPage() {
 
       const [salesRes, productsRes, customersRes] = await Promise.all([
         api.getSales(params),
-        api.getProducts(),
+        api.getProducts({ allInstances: "true" }),
         api.getCustomers(),
       ]);
       setSales(salesRes.data);

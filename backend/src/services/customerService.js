@@ -43,6 +43,24 @@ export async function updateCustomer(customerId, { name, location, phoneNumber }
   return result.rows[0];
 }
 
+export async function updateCustomerLocation(
+  customerId,
+  location,
+  client = null,
+) {
+  const trimmedLocation = location?.trim() || null;
+  const db = client || { query };
+  const result = await db.query(
+    `UPDATE customers
+     SET location = $2
+     WHERE customer_id = $1
+     RETURNING customer_id, name, location, phone_number, created_at`,
+    [customerId, trimmedLocation],
+  );
+  if (!result.rows[0]) throw new AppError('Customer not found', 404);
+  return result.rows[0];
+}
+
 export async function findOrCreateCustomer({ name, location, phoneNumber, customerId }) {
   if (customerId) {
     const existing = await getCustomerById(customerId);
