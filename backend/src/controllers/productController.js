@@ -11,6 +11,7 @@ export const listProducts = [
   q("condition").optional({ values: "falsy" }).isIn(["filled", "empty"]),
   q("stockTier").optional({ values: "falsy" }).isIn(["out", "low", "good"]),
   q("includeArchived").optional().isIn(["true", "false"]),
+  q("allInstances").optional().isIn(["true", "false"]),
   asyncHandler(async (req, res) => {
     const products = await productService.listProducts({
       search: req.query.search || "",
@@ -18,6 +19,7 @@ export const listProducts = [
       condition: req.query.condition || "",
       stockTier: req.query.stockTier || "",
       includeArchived: req.query.includeArchived === "true",
+      showAllInstances: req.query.allInstances === "true",
     });
 
     // Initial (acquisition) price is sensitive cost data — only admins may

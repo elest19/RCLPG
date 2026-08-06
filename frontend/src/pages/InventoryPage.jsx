@@ -242,6 +242,10 @@ export default function InventoryPage() {
       if (conditionFilter) params.condition = conditionFilter;
       if (stockTierFilter) params.stockTier = stockTierFilter;
       if (showArchived) params.includeArchived = "true";
+      // Request every active inventory instance so the UI can apply the
+      // visibility/hide logic per Brand+Weight+Status instead of the server
+      // returning a single canonical record.
+      params.allInstances = "true";
       const [productsRes, brandsRes] = await Promise.all([
         api.getProducts(params),
         api.getBrands(),
@@ -432,6 +436,59 @@ export default function InventoryPage() {
       groupedByWeight.set(key, bucket);
     });
 
+    const sections = Array.from(groupedByWeight.entries())
+      .sort(([left], [right]) => Number(left) - Number(right))
+      .map(([weightClass, weightProducts]) => {
+        const sortedByCreated = [...weightProducts].sort((a, b) => {
+          const aDate = new Date(a.created_at || 0).getTime();
+          const bDate = new Date(b.created_at || 0).getTime();
+          if (aDate !== bDate) return aDate - bDate;
+          return String(a.product_id).localeCompare(String(b.product_id));
+        });
+
+        let visibleProducts = sortedByCreated;
+        if (!showArchived && sortedByCreated.length > 1) {
+          const firstPositiveIndex = sortedByCreated.findIndex(
+            (p) => Number(p.stock_quantity || 0) > 0,
+          );
+
+          if (firstPositiveIndex === -1) {
+            visibleProducts = [sortedByCreated[sortedByCreated.length - 1]];
+          } else if (firstPositiveIndex > 0) {
+            visibleProducts = sortedByCreated.filter((p, idx) => {
+              if (idx < firstPositiveIndex && Number(p.stock_quantity || 0) === 0) {
+                return false;
+              }
+              return true;
+            });
+          }
+        }
+
+        return (
+          <div
+            key={`${title}-${weightClass}`}
+            className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden"
+          >
+            <div className="border-b border-slate-100 bg-slate-50 px-3 py-2">
+              <h5 className="text-xs font-bold uppercase text-slate-700 tracking-wider">
+                Weight - {weightClass} kg
+              </h5>
+            </div>
+            <div className="p-2 sm:p-3">
+              <InventoryTable
+                products={visibleProducts}
+                onEdit={setEditProduct}
+                onDelete={setDeleteTarget}
+                onArchive={setArchiveTarget}
+                onView={openProductDetails}
+                isAdmin={isAdministrator}
+                archiveMode={showArchived}
+              />
+            </div>
+          </div>
+        );
+      });
+
     return (
       <div className="space-y-4">
         <div className="border-b border-slate-200 pb-2">
@@ -439,33 +496,7 @@ export default function InventoryPage() {
             {title}
           </h4>
         </div>
-        <div className="space-y-4">
-          {Array.from(groupedByWeight.entries())
-            .sort(([left], [right]) => Number(left) - Number(right))
-            .map(([weightClass, weightProducts]) => (
-              <div
-                key={`${title}-${weightClass}`}
-                className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden"
-              >
-                <div className="border-b border-slate-100 bg-slate-50 px-3 py-2">
-                  <h5 className="text-xs font-bold uppercase text-slate-700 tracking-wider">
-                    Weight - {weightClass} kg
-                  </h5>
-                </div>
-                <div className="p-2 sm:p-3">
-                  <InventoryTable
-                    products={weightProducts}
-                    onEdit={setEditProduct}
-                    onDelete={setDeleteTarget}
-                    onArchive={setArchiveTarget}
-                    onView={openProductDetails}
-                    isAdmin={isAdministrator}
-                    archiveMode={showArchived}
-                  />
-                </div>
-              </div>
-            ))}
-        </div>
+        <div className="space-y-4">{sections}</div>
       </div>
     );
   };

@@ -88,6 +88,7 @@ export async function listProducts({
   condition = "",
   stockTier = "",
   includeArchived = false,
+  showAllInstances = false,
 } = {}) {
   const brandClause = brand ? `AND brand = $3` : "";
   const conditionClause =
@@ -114,8 +115,13 @@ export async function listProducts({
     params,
   );
 
-  const canonicalProducts = selectCanonicalInventoryProducts(result.rows);
-  const visibleProducts = canonicalProducts.filter((product) => matchesStockTier(product, stockTier));
+  // Depending on the caller, either return the canonical single product per
+  // group (existing behavior) or return every inventory instance. The
+  // Inventory Catalog UI requests `showAllInstances=true` to display every
+  // active record for a Brand+Weight+Status combination.
+  const sourceProducts = showAllInstances ? result.rows : selectCanonicalInventoryProducts(result.rows);
+
+  const visibleProducts = sourceProducts.filter((product) => matchesStockTier(product, stockTier));
 
   return visibleProducts
     .slice()
@@ -126,7 +132,16 @@ export async function listProducts({
       const weightCompare = Number(left.weight_class) - Number(right.weight_class);
       if (weightCompare !== 0) return weightCompare;
 
-      return left.status === "Filled Tank" ? -1 : 1;
+      const statusRank = left.status === "Filled Tank" ? -1 : 1;
+      const otherStatusRank = right.status === "Filled Tank" ? -1 : 1;
+      if (statusRank !== otherStatusRank) return statusRank - otherStatusRank;
+
+      // Preserve creation order within identical brand/weight/status groups
+      const leftDate = new Date(left.created_at || 0).getTime();
+      const rightDate = new Date(right.created_at || 0).getTime();
+      if (leftDate !== rightDate) return leftDate - rightDate;
+
+      return String(left.product_id).localeCompare(String(right.product_id));
     })
     .map(normalizeProduct);
 }
