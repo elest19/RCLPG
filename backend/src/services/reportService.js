@@ -2,6 +2,39 @@ import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
 import { getManilaTodayISO } from "../utils/timezone.js";
 
+export function buildLocationSummaryRows(rows = []) {
+  const locationTotals = new Map();
+
+  for (const row of rows || []) {
+    if (String(row.entry_type || "").toLowerCase() === "payment") {
+      continue;
+    }
+
+    const location = String(row.location || "").trim();
+    if (!location) {
+      continue;
+    }
+
+    const unitsSold = Number(row.sale_quantity ?? 0);
+    if (!Number.isFinite(unitsSold) || unitsSold <= 0) {
+      continue;
+    }
+
+    locationTotals.set(location, (locationTotals.get(location) || 0) + unitsSold);
+  }
+
+  return Array.from(locationTotals.entries())
+    .map(([location, unitsSold]) => ({ location, unitsSold }))
+    .sort((left, right) => String(left.location).localeCompare(String(right.location)));
+}
+
+export function shouldRenderSalesLogSummarySections({ summary = {}, productMix = [], locationSummaryRows = [] }) {
+  const hasSummary = Boolean(summary && Object.keys(summary).length > 0);
+  const hasProductMix = Array.isArray(productMix) && productMix.length > 0;
+  const hasLocationSummary = Array.isArray(locationSummaryRows) && locationSummaryRows.length > 0;
+  return hasSummary || hasProductMix || hasLocationSummary;
+}
+
 function mapRow(row) {
   const isPayment = row.entry_type === 'payment';
   return {
@@ -527,6 +560,11 @@ export async function buildSalesLogPdfBuffer(rows, title, generatedBy, analytics
   const totalUnitsSold = Number(
     analytics.totalUnitsSold ?? filteredProductMix.reduce((sum, item) => sum + Number(item.unitsSold || 0), 0),
   );
+  const locationSummaryRows = buildLocationSummaryRows(rows);
+  const totalLocationUnitsSold = locationSummaryRows.reduce(
+    (sum, item) => sum + Number(item.unitsSold || 0),
+    0,
+  );
 
   doc.on('data', (c) => chunks.push(c));
   const endPromise = new Promise((resolve, reject) => {
@@ -619,7 +657,13 @@ export async function buildSalesLogPdfBuffer(rows, title, generatedBy, analytics
     doc.y = rowStartY + lineHeight;
   }
 
-  if ((summary && Object.keys(summary).length > 0) || productMix.length > 0) {
+  const shouldRenderSections = shouldRenderSalesLogSummarySections({
+    summary,
+    productMix,
+    locationSummaryRows,
+  });
+
+  if (shouldRenderSections) {
     if (doc.y > doc.page.height - doc.page.margins.bottom - 160) {
       doc.addPage();
     }
@@ -683,6 +727,38 @@ export async function buildSalesLogPdfBuffer(rows, title, generatedBy, analytics
       doc.font('Helvetica-Bold').fontSize(8);
       doc.text('Total Units Sold', mixX, mixY + 4, { width: mixWidth * 0.6 });
       doc.text(String(totalUnitsSold), mixX + mixWidth * 0.6, mixY + 4, { width: mixWidth * 0.4, align: 'right' });
+    }
+
+    if (locationSummaryRows.length > 0) {
+      if (doc.y > doc.page.height - doc.page.margins.bottom - 160) {
+        doc.addPage();
+      }
+
+      const locationSectionStartY = doc.y + 16;
+      const locationX = doc.page.margins.left;
+      const locationWidth = availableWidth;
+      const locationHeaderWidth = locationWidth * 0.7;
+      const locationValueWidth = locationWidth * 0.3;
+
+      doc.font('Helvetica-Bold').fontSize(10);
+      doc.text('Locations Summary', locationX, locationSectionStartY, { width: locationWidth });
+
+      doc.font('Helvetica-Bold').fontSize(8);
+      doc.text('Location', locationX, locationSectionStartY + 18, { width: locationHeaderWidth });
+      doc.text('LPG Units Sold', locationX + locationHeaderWidth, locationSectionStartY + 18, { width: locationValueWidth, align: 'right' });
+
+      doc.font('Helvetica').fontSize(8);
+      let locationY = locationSectionStartY + 32;
+      locationSummaryRows.forEach((item) => {
+        const unitsSold = Number(item.unitsSold ?? 0);
+        doc.text(String(item.location), locationX, locationY, { width: locationHeaderWidth });
+        doc.text(String(unitsSold), locationX + locationHeaderWidth, locationY, { width: locationValueWidth, align: 'right' });
+        locationY += 12;
+      });
+
+      doc.font('Helvetica-Bold').fontSize(8);
+      doc.text('Total Units Sold', locationX, locationY + 4, { width: locationHeaderWidth });
+      doc.text(String(totalLocationUnitsSold), locationX + locationHeaderWidth, locationY + 4, { width: locationValueWidth, align: 'right' });
     }
   }
 

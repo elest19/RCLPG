@@ -574,15 +574,6 @@ export default function InventoryPage() {
                 : "Inventory is grouped by weight class so depleted older batches can be archived cleanly."}
             </p>
           </div>
-          {isAdministrator && (
-            <button
-              type="button"
-              onClick={() => setShowArchived((value) => !value)}
-              className="self-start sm:self-auto bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs px-4 py-2 rounded-xl"
-            >
-              {showArchived ? "Back to Active" : "Archive"}
-            </button>
-          )}
         </div>
 
         {brands.map((brand) => {

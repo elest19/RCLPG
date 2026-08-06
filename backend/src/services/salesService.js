@@ -210,11 +210,13 @@ export async function listSales({
       SELECT
         sales_id,
         balance_paid,
-        ROW_NUMBER() OVER (PARTITION BY sales_id ORDER BY credit_id ASC) AS row_num
+        ROW_NUMBER() OVER (PARTITION BY sales_id ORDER BY credit_id ASC) AS row_num,
+        COUNT(*) OVER (PARTITION BY sales_id) AS credit_count
       FROM credit_history
       WHERE payment_option = 'Credit'
     ) ranked_credit
     WHERE row_num = 1
+      AND credit_count = 1
    ) initial_credit ON initial_credit.sales_id = sr.sale_id
    ${salesBaseWhere}
    ORDER BY sr.date_created DESC`,

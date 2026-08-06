@@ -437,18 +437,6 @@ export default function SalesLogPage() {
             )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 flex-1">
-              {!isMobile && (
-                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  <span className="mb-1 block">Search</span>
-                  <input
-                    type="search"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search transactions"
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
-                  />
-                </label>
-              )}
               <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 <span className="mb-1 block">Customer</span>
                 <input
