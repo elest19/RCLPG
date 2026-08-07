@@ -396,12 +396,22 @@ export async function createSale(payload) {
   try {
     await client.query("BEGIN");
 
-    const customer = await customerService.findOrCreateCustomer({
-      customerId: payload.customerId,
-      name: payload.customerName,
-      location: payload.location,
-      phoneNumber: payload.phoneNumber,
-    });
+    let customer;
+    if (payload.customerId) {
+      customer = await customerService.getCustomerById(payload.customerId, client);
+      if (!customer) {
+        throw new AppError("Selected customer not found", 404);
+      }
+    } else {
+      customer = await customerService.createCustomer(
+        {
+          name: payload.customerName,
+          location: payload.location,
+          phoneNumber: payload.phoneNumber,
+        },
+        client,
+      );
+    }
 
     const submittedLocation = payload.location?.trim();
     const existingLocation = customer.location || "";

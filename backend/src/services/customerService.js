@@ -12,21 +12,23 @@ export async function listCustomers(search = '') {
   return result.rows;
 }
 
-export async function getCustomerById(customerId) {
-  const result = await query(
+export async function getCustomerById(customerId, client = null) {
+  const db = client || { query };
+  const result = await db.query(
     `SELECT customer_id, name, location, phone_number, created_at
      FROM customers WHERE customer_id = $1`,
-    [customerId]
+    [customerId],
   );
   return result.rows[0] || null;
 }
 
-export async function createCustomer({ name, location, phoneNumber }) {
-  const result = await query(
+export async function createCustomer({ name, location, phoneNumber }, client = null) {
+  const db = client || { query };
+  const result = await db.query(
     `INSERT INTO customers (name, location, phone_number)
      VALUES ($1, $2, $3)
      RETURNING customer_id, name, location, phone_number, created_at`,
-    [name.trim(), location?.trim() || null, phoneNumber?.trim() || null]
+    [name.trim(), location?.trim() || null, phoneNumber?.trim() || null],
   );
   return result.rows[0];
 }
@@ -61,11 +63,14 @@ export async function updateCustomerLocation(
   return result.rows[0];
 }
 
-export async function findOrCreateCustomer({ name, location, phoneNumber, customerId }) {
+export async function findOrCreateCustomer(
+  { name, location, phoneNumber, customerId },
+  client = null,
+) {
   if (customerId) {
-    const existing = await getCustomerById(customerId);
+    const existing = await getCustomerById(customerId, client);
     if (!existing) throw new AppError('Customer not found', 404);
     return existing;
   }
-  return createCustomer({ name, location, phoneNumber });
+  return createCustomer({ name, location, phoneNumber }, client);
 }
