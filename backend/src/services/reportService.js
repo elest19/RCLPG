@@ -20,11 +20,29 @@ export function buildLocationSummaryRows(rows = []) {
       continue;
     }
 
-    locationTotals.set(location, (locationTotals.get(location) || 0) + unitsSold);
+    const customerId = row.customer_id != null && String(row.customer_id).trim() !== ""
+      ? String(row.customer_id)
+      : null;
+
+    const existing = locationTotals.get(location) || {
+      location,
+      unitsSold: 0,
+      customerCount: 0,
+      customerIds: new Set(),
+    };
+
+    existing.unitsSold += unitsSold;
+
+    if (customerId && !existing.customerIds.has(customerId)) {
+      existing.customerIds.add(customerId);
+      existing.customerCount += 1;
+    }
+
+    locationTotals.set(location, existing);
   }
 
-  return Array.from(locationTotals.entries())
-    .map(([location, unitsSold]) => ({ location, unitsSold }))
+  return Array.from(locationTotals.values())
+    .map(({ location, unitsSold, customerCount }) => ({ location, customerCount, unitsSold }))
     .sort((left, right) => String(left.location).localeCompare(String(right.location)));
 }
 
@@ -565,6 +583,10 @@ export async function buildSalesLogPdfBuffer(rows, title, generatedBy, analytics
     (sum, item) => sum + Number(item.unitsSold || 0),
     0,
   );
+  const totalLocationCustomerCount = locationSummaryRows.reduce(
+    (sum, item) => sum + Number(item.customerCount || 0),
+    0,
+  );
 
   doc.on('data', (c) => chunks.push(c));
   const endPromise = new Promise((resolve, reject) => {
@@ -737,28 +759,34 @@ export async function buildSalesLogPdfBuffer(rows, title, generatedBy, analytics
       const locationSectionStartY = doc.y + 16;
       const locationX = doc.page.margins.left;
       const locationWidth = availableWidth;
-      const locationHeaderWidth = locationWidth * 0.7;
-      const locationValueWidth = locationWidth * 0.3;
+      const locationColWidth = locationWidth * 0.15;
+      const customerColWidth = locationWidth * 0.10;
+      const unitsColWidth = locationWidth * 0.25;
 
       doc.font('Helvetica-Bold').fontSize(10);
-      doc.text('Locations Summary', locationX, locationSectionStartY, { width: locationWidth });
+      doc.text('Location Summary', locationX, locationSectionStartY, { width: locationWidth });
 
       doc.font('Helvetica-Bold').fontSize(8);
-      doc.text('Location', locationX, locationSectionStartY + 18, { width: locationHeaderWidth });
-      doc.text('LPG Units Sold', locationX + locationHeaderWidth, locationSectionStartY + 18, { width: locationValueWidth, align: 'right' });
+      doc.text('Location', locationX, locationSectionStartY + 18, { width: locationColWidth });
+      doc.text('Customers', locationX + locationColWidth, locationSectionStartY + 18, { width: customerColWidth, align: 'center' });
+      doc.text('LPG Units Sold', locationX + locationColWidth + 5, locationSectionStartY + 18, { width: unitsColWidth, align: 'right' });
 
       doc.font('Helvetica').fontSize(8);
       let locationY = locationSectionStartY + 32;
       locationSummaryRows.forEach((item) => {
         const unitsSold = Number(item.unitsSold ?? 0);
-        doc.text(String(item.location), locationX, locationY, { width: locationHeaderWidth });
-        doc.text(String(unitsSold), locationX + locationHeaderWidth, locationY, { width: locationValueWidth, align: 'right' });
+        const customerCount = Number(item.customerCount ?? 0);
+  
+        doc.text(String(item.location), locationX, locationY, { width: locationColWidth });
+        doc.text(String(customerCount), locationX + locationColWidth, locationY, { width: customerColWidth, align: 'center' });
+        doc.text(String(unitsSold), locationX + locationColWidth + 5, locationY, { width: unitsColWidth, align: 'right' });
         locationY += 12;
       });
 
       doc.font('Helvetica-Bold').fontSize(8);
-      doc.text('Total Units Sold', locationX, locationY + 4, { width: locationHeaderWidth });
-      doc.text(String(totalLocationUnitsSold), locationX + locationHeaderWidth, locationY + 4, { width: locationValueWidth, align: 'right' });
+      doc.text('Total Customers', locationX, locationY + 4, { width: locationColWidth });
+      doc.text(String(totalLocationCustomerCount), locationX + locationColWidth, locationY + 4, { width: customerColWidth, align: 'center' });
+      doc.text(String(totalLocationUnitsSold), locationX + locationColWidth + 5, locationY + 4, { width: unitsColWidth, align: 'right' });
     }
   }
 

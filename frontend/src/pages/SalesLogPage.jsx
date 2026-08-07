@@ -13,6 +13,7 @@ import ResponsiveDetailModal from "../components/ResponsiveDetailModal";
 import { subscribeRealtime } from "../utils/realtime";
 import { getSalesEntrySummary } from "../utils/salesTable";
 import useIsMobile from "../hooks/useIsMobile";
+import useDebounce from "../hooks/useDebounce";
 
 export default function SalesLogPage() {
   const { showToast } = useToast();
@@ -20,9 +21,9 @@ export default function SalesLogPage() {
   const [sales, setSales] = useState([]);
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
-  const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("");
-  const [customerNameFilter, setCustomerNameFilter] = useState("");
+  const [customerNameInput, setCustomerNameInput] = useState("");
+  const customerNameFilter = useDebounce(customerNameInput, 400);
   const [productFilter, setProductFilter] = useState("");
   const [brandFilter, setBrandFilter] = useState("");
   const [weightClassFilter, setWeightClassFilter] = useState("");
@@ -51,23 +52,10 @@ export default function SalesLogPage() {
   const selectedSale = sales.find((s) => s.sale_id === selectedSaleId);
 
   const filteredSales = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
     return sales.filter((sale) => {
-      const matchesSearch = !query || [
-        sale.customer_name,
-        sale.brand,
-        sale.product_status,
-        sale.weight_class,
-        sale.lpg_tank_variant,
-        sale.payment_option,
-      ]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(query));
-
-      const matchesCustomer = !customerNameFilter || String(sale.customer_name || "")
+      const matchesCustomer = !customerNameInput || String(sale.customer_name || "")
         .toLowerCase()
-        .includes(customerNameFilter.trim().toLowerCase());
+        .includes(customerNameInput.trim().toLowerCase());
 
       const matchesDate = !dateFilter || (() => {
         const rowDate = new Date(sale.log_date || sale.date_created || sale.date_paid || 0);
@@ -83,9 +71,9 @@ export default function SalesLogPage() {
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(productFilter.trim().toLowerCase()));
 
-      return matchesSearch && matchesCustomer && matchesDate && matchesBrand && matchesWeight && matchesProduct;
+      return matchesCustomer && matchesDate && matchesBrand && matchesWeight && matchesProduct;
     });
-  }, [sales, search, customerNameFilter, dateFilter, productFilter, brandFilter, weightClassFilter]);
+  }, [sales, customerNameInput, dateFilter, productFilter, brandFilter, weightClassFilter]);
 
   const sortedSales = useMemo(() => {
     const field = sortConfig.field;
@@ -154,7 +142,7 @@ export default function SalesLogPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, dateFilter, customerNameFilter, productFilter, brandFilter, weightClassFilter]);
+  }, [dateFilter, customerNameInput, productFilter, brandFilter, weightClassFilter]);
 
   const handleSort = (field) => {
     setSortConfig((prev) =>
@@ -171,7 +159,6 @@ export default function SalesLogPage() {
     try {
       setLoading(true);
       const params = { limit: "100" };
-      if (search) params.search = search;
       if (dateFilter) params.dateFilter = dateFilter;
       if (customerNameFilter) params.customerName = customerNameFilter;
       if (productFilter) params.productFilter = productFilter;
@@ -190,7 +177,7 @@ export default function SalesLogPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, dateFilter, customerNameFilter, productFilter, showToast]);
+  }, [dateFilter, customerNameFilter, productFilter, showToast]);
 
   const loadExpenses = useCallback(async () => {
     try {
@@ -441,8 +428,8 @@ export default function SalesLogPage() {
                 <span className="mb-1 block">Customer</span>
                 <input
                   type="text"
-                  value={customerNameFilter}
-                  onChange={(e) => setCustomerNameFilter(e.target.value)}
+                  value={customerNameInput}
+                  onChange={(e) => setCustomerNameInput(e.target.value)}
                   placeholder="Filter by customer"
                   className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
                 />

@@ -1146,6 +1146,7 @@ export async function getSalesLogPdfRows(period, startDate, endDate) {
   const saleSql = `
     SELECT
       sr.sale_id,
+      c.customer_id AS customer_id,
       sr.date_created,
       NULL::timestamp AS date_paid,
       sr.status,
@@ -1183,6 +1184,7 @@ export async function getSalesLogPdfRows(period, startDate, endDate) {
   const paymentSql = `
     SELECT
       sr.sale_id,
+      c.customer_id AS customer_id,
       sr.date_created,
       ch.date_paid,
       sr.status,

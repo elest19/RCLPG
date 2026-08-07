@@ -6,6 +6,7 @@ import Modal from '../components/Modal';
 import ResponsiveDetailModal from '../components/ResponsiveDetailModal';
 import DownloadCreditLogModal from '../components/DownloadCreditLogModal';
 import { subscribeRealtime } from '../utils/realtime';
+import useDebounce from '../hooks/useDebounce';
 import useIsMobile from '../hooks/useIsMobile';
 
 function CreditStatusBadge({ status }) {
@@ -186,8 +187,10 @@ export default function CreditLogsPage() {
   const [credits, setCredits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [customerFilter, setCustomerFilter] = useState('');
+  const [searchTermInput, setSearchTermInput] = useState('');
+  const [customerFilterInput, setCustomerFilterInput] = useState('');
+  const searchTerm = useDebounce(searchTermInput, 300);
+  const customerFilter = useDebounce(customerFilterInput, 300);
   const [dateFilter, setDateFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [brandFilter, setBrandFilter] = useState('');
@@ -229,16 +232,16 @@ export default function CreditLogsPage() {
   }, [loadData]);
 
   const filteredCredits = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
+    const query = searchTermInput.trim().toLowerCase();
 
     return credits.filter((row) => {
       const matchesSearch = !query || [row.customer_name, row.phone_number, row.product_details]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query));
 
-      const matchesCustomer = !customerFilter || String(row.customer_name || '')
+      const matchesCustomer = !customerFilterInput || String(row.customer_name || '')
         .toLowerCase()
-        .includes(customerFilter.trim().toLowerCase());
+        .includes(customerFilterInput.trim().toLowerCase());
 
       const matchesStatus = statusFilter === 'all'
         || (statusFilter === 'paid' ? row.credit_status === 'Paid' : row.credit_status !== 'Paid');
@@ -256,7 +259,7 @@ export default function CreditLogsPage() {
 
       return matchesSearch && matchesCustomer && matchesStatus && matchesDate && matchesBrand && matchesWeight;
     });
-  }, [credits, customerFilter, dateFilter, searchTerm, statusFilter, brandFilter, weightClassFilter]);
+  }, [credits, customerFilterInput, dateFilter, searchTermInput, statusFilter, brandFilter, weightClassFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredCredits.length / pageSize));
   const pagedCredits = filteredCredits.slice((page - 1) * pageSize, page * pageSize);
@@ -320,8 +323,8 @@ export default function CreditLogsPage() {
             <span className="mb-1 block">Search</span>
             <input
               type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              value={searchTermInput}
+              onChange={(e) => setSearchTermInput(e.target.value)}
               placeholder="Customer, number, product"
               className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
             />
@@ -331,8 +334,8 @@ export default function CreditLogsPage() {
           <span className="mb-1 block">Customer</span>
           <input
             type="text"
-            value={customerFilter}
-            onChange={(e) => setCustomerFilter(e.target.value)}
+            value={customerFilterInput}
+            onChange={(e) => setCustomerFilterInput(e.target.value)}
             placeholder="Filter by customer"
             className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
           />
