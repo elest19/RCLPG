@@ -756,7 +756,7 @@ export async function buildSalesLogPdfBuffer(rows, title, generatedBy, analytics
         doc.addPage();
       }
 
-      const locationSectionStartY = doc.y + 16;
+      const locationSectionStartY = sectionStartY + 128;
       const locationX = doc.page.margins.left;
       const locationWidth = availableWidth;
       const locationColWidth = locationWidth * 0.15;
