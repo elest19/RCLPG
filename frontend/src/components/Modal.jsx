@@ -1,11 +1,37 @@
-export default function Modal({ title, children, onClose, footer, size = 'md' }) {
+import { useEffect, useState } from "react";
+
+export default function Modal({ open = true, title, children, onClose, footer, size = 'md' }) {
+  const [isClosing, setIsClosing] = useState(false);
   const sizeClass = size === 'lg' ? 'max-w-2xl' : size === 'xl' ? 'max-w-3xl' : 'max-w-lg';
+
+  useEffect(() => {
+    if (open) setIsClosing(false);
+  }, [open]);
+
+  const handleClose = () => {
+    setIsClosing(true);
+    setTimeout(() => onClose?.(), 200);
+  };
+
+  if (!open) return null;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" role="dialog" aria-modal="true">
-      <div className={`bg-white rounded-xl shadow-xl ${sizeClass} w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto`}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className={`bg-white rounded-xl shadow-xl ${sizeClass} w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto transition-opacity duration-200 ${isClosing ? "opacity-0" : "opacity-100"}`}
+      >
         <div className="flex items-start justify-between gap-4">
           <h2 className="text-lg font-bold text-slate-900">{title}</h2>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold" aria-label="Close modal">
+          <button
+            type="button"
+            onClick={handleClose}
+            className="text-slate-400 hover:text-slate-600 text-xl font-bold"
+            aria-label="Close modal"
+          >
             &times;
           </button>
         </div>

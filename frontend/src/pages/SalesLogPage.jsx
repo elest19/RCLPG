@@ -43,6 +43,7 @@ export default function SalesLogPage() {
   const [expenseFilter, setExpenseFilter] = useState("today");
   const [expenseStartDate, setExpenseStartDate] = useState("");
   const [expenseEndDate, setExpenseEndDate] = useState("");
+  const [expenseSingleDate, setExpenseSingleDate] = useState("");
   const [expensePage, setExpensePage] = useState(1);
   const [expensePagination, setExpensePagination] = useState({ page: 1, totalPages: 1 });
   const [downloadExpenseLoading, setDownloadExpenseLoading] = useState(false);
@@ -196,6 +197,8 @@ export default function SalesLogPage() {
       if (expenseFilter === "custom") {
         if (expenseStartDate) expenseParams.startDate = expenseStartDate;
         if (expenseEndDate) expenseParams.endDate = expenseEndDate;
+      } else if (expenseFilter === "single") {
+        if (expenseSingleDate) expenseParams.startDate = expenseSingleDate;
       }
       const expensesRes = await api.getExpenses(expenseParams);
       setExpenses(expensesRes.data || []);
@@ -203,7 +206,7 @@ export default function SalesLogPage() {
     } catch (err) {
       showToast("Expenses Load Failed", err.message, "error");
     }
-  }, [expenseEndDate, expenseFilter, expensePage, expenseStartDate, showToast]);
+  }, [expenseEndDate, expenseSingleDate, expenseFilter, expensePage, expenseStartDate, showToast]);
 
   const handleDownloadExpenses = async () => {
     try {
@@ -778,8 +781,9 @@ export default function SalesLogPage() {
           />
         )}
 
-        {isAdministrator && deleteTarget && (
-          <Modal
+        {isAdministrator && (
+        <Modal
+            open={!!deleteTarget}
             title="Delete Sale"
             onClose={() => setDeleteTarget(null)}
             footer={
@@ -804,14 +808,15 @@ export default function SalesLogPage() {
           >
             <p className="text-sm text-slate-600">
               Permanently delete this sale for{" "}
-              <strong>{deleteTarget.customer_name}</strong>? Stock will be
+              <strong>{deleteTarget?.customer_name}</strong>? Stock will be
               restored and all payment records will be removed.
             </p>
           </Modal>
         )}
 
-        {isAdministrator && paymentEditTarget && (
-          <Modal
+        {isAdministrator && (
+        <Modal
+            open={!!paymentEditTarget}
             title="Override Payment"
             onClose={() => setPaymentEditTarget(null)}
             footer={
@@ -850,8 +855,9 @@ export default function SalesLogPage() {
           </Modal>
         )}
 
-        {isAdministrator && expenseDeleteTarget && (
-          <Modal
+{isAdministrator && (
+        <Modal
+            open={!!expenseDeleteTarget}
             title="Delete Expense"
             onClose={() => setExpenseDeleteTarget(null)}
             footer={
@@ -875,14 +881,15 @@ export default function SalesLogPage() {
             }
           >
             <p className="text-sm text-slate-600">
-              Delete <strong>{expenseDeleteTarget.expenses}</strong> expense of {" "}
-              <strong>{formatCurrency(expenseDeleteTarget.amount)}</strong>?
+              Delete <strong>{expenseDeleteTarget?.expenses}</strong> expense of{" "}
+              <strong>{formatCurrency(expenseDeleteTarget?.amount)}</strong>?
             </p>
           </Modal>
         )}
 
         {isAdministrator && paymentDeleteTarget && (
-          <Modal
+        <Modal
+            open={true}
             title="Delete Payment"
             onClose={() => setPaymentDeleteTarget(null)}
             footer={
@@ -906,7 +913,7 @@ export default function SalesLogPage() {
             }
           >
             <p className="text-sm text-slate-600">
-              Delete this payment record for <strong>{paymentDeleteTarget.customer_name}</strong>? The sale itself will remain unchanged and remaining credit will be recalculated.
+              Delete this payment record for <strong>{paymentDeleteTarget?.customer_name}</strong>? The sale itself will remain unchanged and remaining credit will be recalculated.
             </p>
           </Modal>
         )}
@@ -950,8 +957,17 @@ export default function SalesLogPage() {
               <option value="first_half">First Half (Jan-Jun)</option>
               <option value="second_half">Second Half (Jul-Dec)</option>
               <option value="year">This Year</option>
+              <option value="single">Custom Date</option>
               <option value="custom">Custom Date Range</option>
             </select>
+            {expenseFilter === "single" && (
+              <input
+                type="date"
+                value={expenseSingleDate}
+                onChange={(e) => setExpenseSingleDate(e.target.value)}
+                className="text-xs p-2.5 border border-slate-200 rounded-xl"
+              />
+            )}
             {expenseFilter === "custom" && (
               <div className="flex gap-2">
                 <input

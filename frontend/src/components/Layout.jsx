@@ -46,52 +46,51 @@ export default function Layout({ children }) {
               </div>
             </div>
 
-            <nav
-              className="hidden md:flex space-x-1"
-              aria-label="Main Navigation"
-            >
-              <NavLink to="/dashboard" className={navClass} end>
-                Dashboard & Sales
-              </NavLink>
-              <NavLink to="/inventory" className={navClass}>
-                Inventory Catalog
-              </NavLink>
-              <NavLink to="/sales-log" className={navClass}>
-                Customer & Sales Log
-              </NavLink>
-              <NavLink to="/credit-logs" className={navClass}>
-                Credit Logs
-              </NavLink>
-              {isAdministrator && (
-                <NavLink to="/admin/profile" className={navClass}>
-                  Admin Profile
+            <div className="hidden xl:flex space-x-1 items-center" aria-label="Main Navigation">
+              <nav>
+                <NavLink to="/dashboard" className={navClass} end>
+                  Dashboard & Sales
                 </NavLink>
-              )}
-            </nav>
+                <NavLink to="/inventory" className={navClass}>
+                  Inventory Catalog
+                </NavLink>
+                <NavLink to="/sales-log" className={navClass}>
+                  Customer & Sales Log
+                </NavLink>
+                <NavLink to="/credit-logs" className={navClass}>
+                  Credit Logs
+                </NavLink>
+                {isAdministrator && (
+                  <NavLink to="/admin/profile" className={navClass}>
+                    Admin Profile
+                  </NavLink>
+                )}
+              </nav>
 
-            <div className="hidden sm:flex items-center space-x-2">
-              {!isAdministrator && (
+              <div className="hidden xl:flex items-center space-x-2">
+                {!isAdministrator && (
+                  <button
+                    type="button"
+                    onClick={() => setProfileOpen(true)}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs px-3 py-2.5 rounded-xl transition"
+                    aria-label="Open profile"
+                  >
+                    Profile
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => setProfileOpen(true)}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs px-3 py-2.5 rounded-xl transition"
-                  aria-label="Open profile"
+                  onClick={handleLogout}
+                  className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs px-3 py-2.5 rounded-xl transition"
                 >
-                  Profile
+                  Logout
                 </button>
-              )}
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs px-3 py-2.5 rounded-xl transition"
-              >
-                Logout
-              </button>
+              </div>
             </div>
 
             <button
               type="button"
-              className="md:hidden text-slate-600 p-2 rounded-xl"
+              className="xl:hidden text-slate-600 p-2 rounded-xl"
               aria-label="Toggle menu"
               aria-expanded={mobileOpen}
               onClick={() => setMobileOpen((v) => !v)}
@@ -114,7 +113,7 @@ export default function Layout({ children }) {
           </div>
         </div>
 
-        <div className="md:hidden">
+        <div className="xl:hidden">
           {mobileOpen && (
             <button
               type="button"

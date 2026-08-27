@@ -53,6 +53,12 @@ export function buildReportDateFilter(quickFilter, startDate, endDate, dateColum
   } else if (quickFilter === 'second_half') {
     const yearStart = getManilaYear();
     addRangeClause(`'${yearStart}-07-01'`, `'${yearStart}-12-31'`);
+  } else if (quickFilter === 'single' && normalizedStartDate) {
+    clauses.push(`${columnExpr} = $${idx++}::date`);
+    params.push(normalizedStartDate);
+  } else if (quickFilter === 'custom' && normalizedStartDate && normalizedEndDate) {
+    clauses.push(`${columnExpr} BETWEEN $${idx++}::date AND $${idx++}::date`);
+    params.push(normalizedStartDate, normalizedEndDate);
   } else if (normalizedStartDate && normalizedEndDate) {
     clauses.push(`${columnExpr} BETWEEN $${idx++}::date AND $${idx++}::date`);
     params.push(normalizedStartDate, normalizedEndDate);

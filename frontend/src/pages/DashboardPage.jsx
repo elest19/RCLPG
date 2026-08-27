@@ -31,6 +31,7 @@ export default function DashboardPage() {
   const [expenseDateFilter, setExpenseDateFilter] = useState("today");
   const [expenseStartDate, setExpenseStartDate] = useState("");
   const [expenseEndDate, setExpenseEndDate] = useState("");
+  const [expenseSingleDate, setExpenseSingleDate] = useState("");
   const [reportRefreshKey, setReportRefreshKey] = useState(0);
   const [isLowStockExpanded, setIsLowStockExpanded] = useState(true);
   const isMobile = useIsMobile();
@@ -45,10 +46,12 @@ export default function DashboardPage() {
           quickFilter: expenseDateFilter,
         };
 
-        if (expenseDateFilter === "custom") {
-          if (expenseStartDate) expenseParams.startDate = expenseStartDate;
-          if (expenseEndDate) expenseParams.endDate = expenseEndDate;
-        }
+    if (expenseDateFilter === "custom") {
+      if (expenseStartDate) expenseParams.startDate = expenseStartDate;
+      if (expenseEndDate) expenseParams.endDate = expenseEndDate;
+    } else if (expenseDateFilter === "single") {
+      if (expenseSingleDate) expenseParams.startDate = expenseSingleDate;
+    }
 
         const [metricsRes, salesRes, expensesRes] = await Promise.all([
           api.getMetrics(),
@@ -65,7 +68,7 @@ export default function DashboardPage() {
         setLoading(false);
       }
     },
-    [expenseDateFilter, expenseEndDate, expenseStartDate, showToast],
+    [expenseDateFilter, expenseEndDate, expenseSingleDate, expenseStartDate, showToast],
   );
 
   useEffect(() => {
@@ -347,8 +350,17 @@ export default function DashboardPage() {
                 <option value="first_half">First Half (Jan-Jun)</option>
                 <option value="second_half">Second Half (Jul-Dec)</option>
                 <option value="year">This Year</option>
+                <option value="single">Custom Date</option>
                 <option value="custom">Custom Date Range</option>
               </select>
+              {expenseDateFilter === "single" && (
+                <input
+                  type="date"
+                  value={expenseSingleDate}
+                  onChange={(e) => setExpenseSingleDate(e.target.value)}
+                  className="text-xs p-2.5 border border-slate-200 rounded-xl"
+                />
+              )}
               {expenseDateFilter === "custom" && (
                 <div className="flex gap-2">
                   <input
@@ -594,37 +606,37 @@ export default function DashboardPage() {
         />
       )}
 
-      {isAdministrator && expenseDeleteTarget && (
-        <Modal
-          title="Delete Expense"
-          onClose={() => setExpenseDeleteTarget(null)}
-          footer={
-            <>
-              <button
-                type="button"
-                onClick={() => setExpenseDeleteTarget(null)}
-                className="px-4 py-2 rounded-xl bg-slate-100 text-sm font-bold"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={deletingExpense}
-                onClick={confirmDeleteExpense}
-                className="px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-bold"
-              >
-                {deletingExpense ? "Deleting..." : "Confirm Delete"}
-              </button>
-            </>
-          }
-        >
-          <p className="text-sm text-slate-600">
-            Permanently delete the{" "}
-            <strong>{expenseDeleteTarget.expenses}</strong> expense of{" "}
-            {formatCurrency(expenseDeleteTarget.amount)}?
-          </p>
-        </Modal>
-      )}
+       {isAdministrator && (
+         <Modal
+           open={!!expenseDeleteTarget}
+           title="Delete Expense"
+           onClose={() => setExpenseDeleteTarget(null)}
+           footer={
+             <>
+               <button
+                 type="button"
+                 onClick={() => setExpenseDeleteTarget(null)}
+                 className="px-4 py-2 rounded-xl bg-slate-100 text-sm font-bold"
+               >
+                 Cancel
+               </button>
+               <button
+                 type="button"
+                 disabled={deletingExpense}
+                 onClick={confirmDeleteExpense}
+                 className="px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-bold"
+               >
+                 {deletingExpense ? "Deleting..." : "Confirm Delete"}
+               </button>
+             </>
+           }
+         >
+           <p className="text-sm text-slate-600">
+             Permanently delete the <strong>{expenseDeleteTarget?.expenses}</strong> expense of{" "}
+             {formatCurrency(expenseDeleteTarget?.amount)}?
+           </p>
+         </Modal>
+       )}
     </div>
   );
 }

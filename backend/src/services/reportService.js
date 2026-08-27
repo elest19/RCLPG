@@ -866,35 +866,55 @@ export async function buildSalesLogPdfBuffer(rows, title, generatedBy, analytics
       const locationSectionStartY = doc.page.margins.top + 20;
       const locationX = doc.page.margins.left;
       const locationWidth = availableWidth;
-
       const locationColWidth = locationWidth * 0.15;
       const customerColWidth = locationWidth * 0.10;
       const unitsColWidth = locationWidth * 0.25;
+      const locationRowHeight = 12;
 
-      doc.font('Helvetica-Bold').fontSize(10);
-      doc.text('Location Summary', locationX, locationSectionStartY, { width: locationWidth });
+      const renderLocationSummaryHeader = (titleY = locationSectionStartY) => {
+        doc.font('Helvetica-Bold').fontSize(10);
+        doc.text('Location Summary', locationX, titleY, { width: locationWidth });
 
-      doc.font('Helvetica-Bold').fontSize(8);
-      doc.text('Location', locationX, locationSectionStartY + 18, { width: locationColWidth });
-      doc.text('Customers', locationX + locationColWidth, locationSectionStartY + 18, { width: customerColWidth, align: 'center' });
-      doc.text('LPG Units Sold', locationX + locationColWidth + 5, locationSectionStartY + 18, { width: unitsColWidth, align: 'right' });
+        doc.font('Helvetica-Bold').fontSize(8);
+        doc.text('Location', locationX, titleY + 18, { width: locationColWidth });
+        doc.text('Customers', locationX + locationColWidth, titleY + 18, { width: customerColWidth, align: 'center' });
+        doc.text('LPG Units Sold', locationX + locationColWidth + 5, titleY + 18, { width: unitsColWidth, align: 'right' });
 
-      doc.font('Helvetica').fontSize(8);
+        doc.font('Helvetica').fontSize(8);
+      };
+
+      renderLocationSummaryHeader();
+
       let locationY = locationSectionStartY + 32;
-      locationSummaryRows.forEach((item) => {
+      for (const item of locationSummaryRows) {
+        const rowFits = locationY + locationRowHeight <= doc.page.height - doc.page.margins.bottom;
+        if (!rowFits) {
+          doc.addPage();
+          renderLocationSummaryHeader(doc.page.margins.top + 20);
+          locationY = doc.page.margins.top + 20 + 32;
+        }
+
         const unitsSold = Number(item.unitsSold ?? 0);
         const customerCount = Number(item.customerCount ?? 0);
-  
+
         doc.text(String(item.location), locationX, locationY, { width: locationColWidth });
         doc.text(String(customerCount), locationX + locationColWidth, locationY, { width: customerColWidth, align: 'center' });
         doc.text(String(unitsSold), locationX + locationColWidth + 5, locationY, { width: unitsColWidth, align: 'right' });
-        locationY += 12;
-      });
+        locationY += locationRowHeight;
+      }
+
+      const totalY = locationY + 4;
+      const totalRowsNeedPage = totalY + 12 > doc.page.height - doc.page.margins.bottom;
+      if (totalRowsNeedPage) {
+        doc.addPage();
+        renderLocationSummaryHeader(doc.page.margins.top + 20);
+        locationY = doc.page.margins.top + 20 + 32;
+      }
 
       doc.font('Helvetica-Bold').fontSize(8);
-      doc.text('Total Customers', locationX, locationY + 4, { width: locationColWidth });
-      doc.text(String(totalLocationCustomerCount), locationX + locationColWidth, locationY + 4, { width: customerColWidth, align: 'center' });
-      doc.text(String(totalLocationUnitsSold), locationX + locationColWidth + 5, locationY + 4, { width: unitsColWidth, align: 'right' });
+      doc.text('Total Customers', locationX, totalY, { width: locationColWidth });
+      doc.text(String(totalLocationCustomerCount), locationX + locationColWidth, totalY, { width: customerColWidth, align: 'center' });
+      doc.text(String(totalLocationUnitsSold), locationX + locationColWidth + 5, totalY, { width: unitsColWidth, align: 'right' });
     }
   }
 

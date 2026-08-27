@@ -209,6 +209,7 @@ export default function SalesReportSection({ refreshKey = 0 }) {
   const { showToast } = useToast();
   const [quickFilter, setQuickFilter] = useState("today");
   const [dateRange, setDateRange] = useState([null, null]);
+  const [singleDate, setSingleDate] = useState(null);
   const [report, setReport] = useState(null);
   const [dailyMetrics, setDailyMetrics] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -217,11 +218,27 @@ export default function SalesReportSection({ refreshKey = 0 }) {
   const loadReport = useCallback(async () => {
     try {
       setLoading(true);
-      const params = { quickFilter };
-      if (quickFilter === "custom" && dateRange[0] && dateRange[1]) {
-        params.startDate = formatDateISO(dateRange[0]);
-        params.endDate = formatDateISO(dateRange[1]);
+      const params = {};
+
+      if (quickFilter === "single") {
+        if (!singleDate) {
+          params.quickFilter = "custom";
+        } else {
+          const isoDate = formatDateISO(singleDate);
+          params.quickFilter = "custom";
+          params.startDate = isoDate;
+          params.endDate = isoDate;
+        }
+      } else if (quickFilter === "custom") {
+        if (dateRange[0] && dateRange[1]) {
+          params.quickFilter = "custom";
+          params.startDate = formatDateISO(dateRange[0]);
+          params.endDate = formatDateISO(dateRange[1]);
+        }
+      } else {
+        params.quickFilter = quickFilter;
       }
+
       const [reportRes, metricsRes] = await Promise.all([
         api.getSalesReport(params),
         api.getDailyMetrics(params),
@@ -233,7 +250,7 @@ export default function SalesReportSection({ refreshKey = 0 }) {
     } finally {
       setLoading(false);
     }
-  }, [quickFilter, dateRange, showToast]);
+  }, [quickFilter, singleDate, dateRange, showToast]);
 
   useEffect(() => {
     loadReport();
@@ -275,8 +292,9 @@ export default function SalesReportSection({ refreshKey = 0 }) {
             { value: "first_half", label: "First Half (Jan–Jun)" },
             { value: "second_half", label: "Second Half (Jul–Dec)" },
             { value: "year", label: "This Year" },
-            { value: "custom", label: "Custom Date Range" },
-          ]}
+              { value: "single", label: "Custom Date" },
+              { value: "custom", label: "Custom Date Range" },
+            ]}
         />
         {quickFilter === "custom" && (
           <DatePickerInput
@@ -285,6 +303,16 @@ export default function SalesReportSection({ refreshKey = 0 }) {
             placeholder="Pick dates"
             value={dateRange}
             onChange={setDateRange}
+            className="md:col-span-2"
+          />
+        )}
+        {quickFilter === "single" && (
+          <DatePickerInput
+            type="default"
+            label="Custom Date"
+            placeholder="Pick date"
+            value={singleDate}
+            onChange={setSingleDate}
             className="md:col-span-2"
           />
         )}
