@@ -9,6 +9,7 @@ const PERIODS = [
   { value: 'first_half', label: 'First Half (Jan–Jun)' },
   { value: 'second_half', label: 'Second Half (Jul–Dec)' },
   { value: 'yearly', label: 'Yearly' },
+  { value: 'single', label: 'Custom Date' },
   { value: 'custom', label: 'Custom Date Range' },
 ];
 
@@ -17,6 +18,7 @@ export default function DownloadSalesLogModal({ onClose }) {
   const [period, setPeriod] = useState('today');
   const [monthValue, setMonthValue] = useState('');
   const [yearValue, setYearValue] = useState(String(new Date().getFullYear()));
+  const [singleDate, setSingleDate] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [loading, setLoading] = useState(false);
@@ -40,6 +42,14 @@ export default function DownloadSalesLogModal({ onClose }) {
           return;
         }
         params.startDate = `${yearValue}-01-01`;
+      }
+
+      if (period === 'single') {
+        if (!singleDate) {
+          showToast('Date Required', 'Please select a date.', 'error');
+          return;
+        }
+        params.startDate = singleDate;
       }
 
       if (period === 'custom') {
@@ -117,7 +127,7 @@ export default function DownloadSalesLogModal({ onClose }) {
           </div>
         )}
 
-        {period === 'yearly' && (
+         {period === 'yearly' && (
           <div>
             <label htmlFor="log-year" className="block text-xs font-bold uppercase text-slate-500 mb-1">
               Year
@@ -129,6 +139,21 @@ export default function DownloadSalesLogModal({ onClose }) {
               max="2100"
               value={yearValue}
               onChange={(e) => setYearValue(e.target.value)}
+              className="w-full text-sm p-2.5 border border-slate-200 rounded-xl"
+            />
+          </div>
+        )}
+
+        {period === 'single' && (
+          <div>
+            <label htmlFor="log-single-date" className="block text-xs font-bold uppercase text-slate-500 mb-1">
+              Date
+            </label>
+            <input
+              id="log-single-date"
+              type="date"
+              value={singleDate}
+              onChange={(e) => setSingleDate(e.target.value)}
               className="w-full text-sm p-2.5 border border-slate-200 rounded-xl"
             />
           </div>

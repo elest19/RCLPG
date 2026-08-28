@@ -87,7 +87,7 @@ export function buildExportDateFilter(period, startDate, endDate, dateColumn = '
 
   if (period === 'today' || period === 'current_day') {
     addRangeClause(SQL_TODAY, SQL_TODAY);
-  } else if (period === 'daily' && normalizedStartDate) {
+  } else if ((period === 'daily' || period === 'single') && normalizedStartDate) {
     clauses.push(`${columnExpr} = $${idx++}::date`);
     params.push(normalizedStartDate);
   } else if (period === 'monthly' || period === 'month') {
@@ -130,9 +130,6 @@ export function buildExportDateFilter(period, startDate, endDate, dateColumn = '
     } else {
       addRangeClause(`'${year}-07-01'`, `'${year}-12-31'`);
     }
-  } else if (period === 'yearly' && normalizedStartDate) {
-    clauses.push(`DATE_TRUNC('year', ${columnExpr}) = DATE_TRUNC('year', $${idx++}::date)`);
-    params.push(normalizedStartDate);
   } else if (period === 'custom' && normalizedStartDate && normalizedEndDate) {
     clauses.push(`${columnExpr} BETWEEN $${idx++}::date AND $${idx++}::date`);
     params.push(normalizedStartDate, normalizedEndDate);

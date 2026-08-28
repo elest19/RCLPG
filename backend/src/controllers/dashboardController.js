@@ -107,7 +107,7 @@ export const getDailyMetrics = [
 
 export const downloadSalesLog = [
   q("period")
-    .isIn(["today", "daily", "weekly", "monthly", "first_half", "second_half", "yearly", "custom"]).withMessage("Invalid period"),
+    .isIn(["today", "daily", "weekly", "monthly", "first_half", "second_half", "yearly", "single", "custom"]).withMessage("Invalid period"),
   q("startDate").optional().isISO8601(),
   asyncHandler(async (req, res) => {
     const { period, startDate, endDate, format } = req.query;
@@ -195,17 +195,17 @@ export const downloadSalesReport = [
 
 export const downloadCreditLog = [
   q('period')
-    .isIn(['daily', 'weekly', 'monthly', 'first_half', 'second_half', 'yearly', 'custom'])
+    .isIn(['daily', 'weekly', 'monthly', 'first_half', 'second_half', 'yearly', 'single', 'custom'])
     .withMessage('Invalid period'),
   q('startDate').optional().isISO8601(),
   q('endDate').optional().isISO8601(),
   asyncHandler(async (req, res) => {
     const { period, startDate, endDate } = req.query;
-    // For credit logs we reuse the credit register and filter on date if provided
     const rows = await creditService.getCreditRegister();
-    // Optionally filter rows by date range if provided
     let filtered = rows;
     if (period === 'daily' && startDate) {
+      filtered = rows.filter((r) => toManilaDateISO(r.date_created) === startDate);
+    } else if (period === 'single' && startDate) {
       filtered = rows.filter((r) => toManilaDateISO(r.date_created) === startDate);
     } else if (period === 'monthly' && startDate) {
       const targetMonth = toManilaDateISO(startDate).slice(0, 7);

@@ -79,10 +79,6 @@ async function request(path, options = {}) {
     return data;
   }
 
-  if (!response.ok) {
-    throw new Error("Download failed");
-  }
-
   return response;
 }
 
