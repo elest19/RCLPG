@@ -240,7 +240,12 @@ export function saveSession({ token, expiresAt, admin }) {
 
 export function getStoredAdmin() {
   const raw = localStorage.getItem("rclpg_admin");
-  return raw ? JSON.parse(raw) : null;
+  if (!raw || raw === "undefined") return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }
 
 export const formatCurrency = (value) =>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import {
   Badge,
   Card,
@@ -215,7 +215,10 @@ export default function SalesReportSection({ refreshKey = 0 }) {
   const [loading, setLoading] = useState(true);
   const [downloadModalOpen, setDownloadModalOpen] = useState(false);
 
+  const requestIdRef = useRef(0);
+
   const loadReport = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     try {
       setLoading(true);
       const params = {};
@@ -234,6 +237,8 @@ export default function SalesReportSection({ refreshKey = 0 }) {
           params.quickFilter = "custom";
           params.startDate = formatDateISO(dateRange[0]);
           params.endDate = formatDateISO(dateRange[1]);
+        } else {
+          return;
         }
       } else {
         params.quickFilter = quickFilter;
@@ -243,18 +248,26 @@ export default function SalesReportSection({ refreshKey = 0 }) {
         api.getSalesReport(params),
         api.getDailyMetrics(params),
       ]);
+
+      if (requestId !== requestIdRef.current) return;
+
       setReport(reportRes.data);
       setDailyMetrics(metricsRes.data);
     } catch (err) {
-      showToast("Report Failed", err.message, "error");
+      if (requestId === requestIdRef.current) {
+        showToast("Report Failed", err.message, "error");
+      }
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [quickFilter, singleDate, dateRange, showToast]);
 
   useEffect(() => {
     loadReport();
-  }, [loadReport, refreshKey]);
+  }, [loadReport, refreshKey]); 
+
 
   const summary = report?.summary;
   const brandMetrics = report?.brandMetrics || [];

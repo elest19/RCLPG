@@ -33,25 +33,43 @@ export function buildReportDateFilter(quickFilter, startDate, endDate, dateColum
   if (quickFilter === 'today') {
     addRangeClause(SQL_TODAY, SQL_TODAY);
   } else if (quickFilter === 'week') {
-    addRangeClause(
-      `DATE_TRUNC('week', ${SQL_TODAY}::timestamp)::date`,
-      `(DATE_TRUNC('week', ${SQL_TODAY}::timestamp) + INTERVAL '6 days')::date`,
-    );
+    if (normalizedStartDate) {
+      addRangeClause(
+        `DATE_TRUNC('week', $${idx++}::date)::date`,
+        `(DATE_TRUNC('week', $${idx++}::date) + INTERVAL '6 days')::date`,
+      );
+      params.push(normalizedStartDate, normalizedStartDate);
+    } else {
+      addRangeClause(
+        `DATE_TRUNC('week', ${SQL_TODAY}::timestamp)::date`,
+        `(DATE_TRUNC('week', ${SQL_TODAY}::timestamp) + INTERVAL '6 days')::date`,
+      );
+    }
   } else if (quickFilter === 'month') {
-    addRangeClause(
-      `DATE_TRUNC('month', ${SQL_TODAY}::timestamp)::date`,
-      `(DATE_TRUNC('month', ${SQL_TODAY}::timestamp) + INTERVAL '1 month - 1 day')::date`,
-    );
+    if (normalizedStartDate) {
+      clauses.push(`DATE_TRUNC('month', ${columnExpr}) = DATE_TRUNC('month', $${idx++}::date)`);
+      params.push(normalizedStartDate);
+    } else {
+      addRangeClause(
+        `DATE_TRUNC('month', ${SQL_TODAY}::timestamp)::date`,
+        `(DATE_TRUNC('month', ${SQL_TODAY}::timestamp) + INTERVAL '1 month - 1 day')::date`,
+      );
+    }
   } else if (quickFilter === 'year') {
-    addRangeClause(
-      `DATE_TRUNC('year', ${SQL_TODAY}::timestamp)::date`,
-      `(DATE_TRUNC('year', ${SQL_TODAY}::timestamp) + INTERVAL '1 year - 1 day')::date`,
-    );
+    if (normalizedStartDate) {
+      clauses.push(`DATE_TRUNC('year', ${columnExpr}) = DATE_TRUNC('year', $${idx++}::date)`);
+      params.push(normalizedStartDate);
+    } else {
+      addRangeClause(
+        `DATE_TRUNC('year', ${SQL_TODAY}::timestamp)::date`,
+        `(DATE_TRUNC('year', ${SQL_TODAY}::timestamp) + INTERVAL '1 year - 1 day')::date`,
+      );
+    }
   } else if (quickFilter === 'first_half') {
-    const yearStart = getManilaYear();
+    const yearStart = normalizedStartDate ? new Date(`${normalizedStartDate}T12:00:00`).getFullYear() : getManilaYear();
     addRangeClause(`'${yearStart}-01-01'`, `'${yearStart}-06-30'`);
   } else if (quickFilter === 'second_half') {
-    const yearStart = getManilaYear();
+    const yearStart = normalizedStartDate ? new Date(`${normalizedStartDate}T12:00:00`).getFullYear() : getManilaYear();
     addRangeClause(`'${yearStart}-07-01'`, `'${yearStart}-12-31'`);
   } else if (quickFilter === 'single' && normalizedStartDate) {
     clauses.push(`${columnExpr} = $${idx++}::date`);
