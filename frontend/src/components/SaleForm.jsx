@@ -169,7 +169,12 @@ export default function SaleForm({
       }));
   }, [filteredProducts]);
 
-  const [selectedWeight, setSelectedWeight] = useState("");
+  const [selectedWeight, setSelectedWeight] = useState(
+    String(initialValues?.weightClass ?? initialValues?.weight_class ?? ""),
+  );
+  const [selectedEmptyTankId, setSelectedEmptyTankId] = useState(
+    initialValues?.emptyTankProductId || "",
+  );
 
   const weightGroups = groupedProductOptions;
 
@@ -209,6 +214,45 @@ export default function SaleForm({
   const selectedProduct = filteredProducts.find(
     (p) => p.product_id === productId,
   );
+  const emptyTankOptions = useMemo(() => {
+    if (!purchaseTank || !brand || !selectedWeight) return [];
+
+    return products
+      .filter(
+        (product) =>
+          product.status === "Empty Cylinder" &&
+          product.brand === brand &&
+          Number(product.weight_class) === Number(selectedWeight) &&
+          Number(product.stock_quantity) > 0,
+      )
+      .sort(
+        (left, right) =>
+          new Date(left.created_at) - new Date(right.created_at) ||
+          String(left.product_id).localeCompare(String(right.product_id)),
+      );
+  }, [brand, products, purchaseTank, selectedWeight]);
+
+  const selectedEmptyTank = useMemo(
+    () =>
+      emptyTankOptions.find(
+        (product) => product.product_id === selectedEmptyTankId,
+      ) || null,
+    [emptyTankOptions, selectedEmptyTankId],
+  );
+
+  const filledTankInitialPrice = Number(selectedProduct?.initial_price ?? 0);
+  const filledTankUnitPrice = Number(
+    priceType === "Regular Retail"
+      ? selectedProduct?.regular_retail ?? 0
+      : selectedProduct?.wholesale_price ?? 0,
+  );
+  const emptyTankInitialPrice = Number(selectedEmptyTank?.initial_price ?? 0);
+  const emptyTankUnitPrice = Number(
+    priceType === "Regular Retail"
+      ? selectedEmptyTank?.regular_retail ?? 0
+      : selectedEmptyTank?.wholesale_price ?? 0,
+  );
+
   const shouldEnableLpgField = !purchaseTank && isFilled;
   const customerLpgValue = shouldEnableLpgField ? lpgTankVariant : "N/A";
   const total = Number(quantity) * Number(unitPrice);
@@ -216,6 +260,15 @@ export default function SaleForm({
   useEffect(() => {
     if (!brand && brands.length) setBrand(brands[0]);
   }, [brand, brands]);
+
+  useEffect(() => {
+    if (!initialValues?.emptyTankProductId) {
+      if (!purchaseTank) setSelectedEmptyTankId("");
+      return;
+    }
+
+    setSelectedEmptyTankId(initialValues.emptyTankProductId);
+  }, [initialValues?.emptyTankProductId, purchaseTank]);
 
   useEffect(() => {
     if (filteredProducts.length) {
@@ -246,8 +299,32 @@ export default function SaleForm({
       priceType === "Regular Retail"
         ? selectedProduct.regular_retail
         : selectedProduct.wholesale_price;
-    setUnitPrice(Number(base));
-  }, [selectedProduct, priceType]);
+
+    const nextUnitPrice = purchaseTank && selectedEmptyTank
+      ? Number(base) + Number(emptyTankUnitPrice)
+      : Number(base);
+
+    setUnitPrice(Number(nextUnitPrice));
+  }, [selectedProduct, priceType, purchaseTank, selectedEmptyTank, emptyTankUnitPrice]);
+
+  useEffect(() => {
+    if (!purchaseTank) {
+      setSelectedEmptyTankId("");
+      return;
+    }
+
+    if (!brand || !selectedWeight) {
+      setSelectedEmptyTankId("");
+      return;
+    }
+
+    if (
+      selectedEmptyTankId &&
+      !emptyTankOptions.some((product) => product.product_id === selectedEmptyTankId)
+    ) {
+      setSelectedEmptyTankId("");
+    }
+  }, [brand, emptyTankOptions, purchaseTank, selectedEmptyTankId, selectedWeight]);
 
   useEffect(() => {
     if (!weightGroups.length) {
@@ -299,6 +376,13 @@ export default function SaleForm({
       is_purchased_tank: purchaseTank,
       brand,
       lpgTankVariant: shouldEnableLpgField ? lpgTankVariant : undefined,
+      emptyTankProductId: purchaseTank ? selectedEmptyTankId || undefined : undefined,
+      emptyTankBrand: purchaseTank && selectedEmptyTank ? selectedEmptyTank.brand : undefined,
+      emptyTankWeightClass: purchaseTank && selectedEmptyTank ? selectedEmptyTank.weight_class : undefined,
+      emptyTankInitialPrice: purchaseTank ? emptyTankInitialPrice : undefined,
+      filledTankInitialPrice: purchaseTank ? filledTankInitialPrice : undefined,
+      emptyTankUnitPrice: purchaseTank ? emptyTankUnitPrice : undefined,
+      filledTankUnitPrice: purchaseTank ? filledTankUnitPrice : undefined,
     });
   };
 
@@ -501,8 +585,11 @@ export default function SaleForm({
               <select
                 id="product-weight"
                 value={selectedWeight}
-                onChange={(e) => setSelectedWeight(e.target.value)}
-                className="w-full text-sm py-3 px-4 border border-slate-200 bg-white rounded-xl"
+                onChange={(e) => {
+                  setSelectedWeight(e.target.value);
+                  setSelectedEmptyTankId("");
+                }}
+                className="w-full text-xs py-3 px-4 border border-slate-200 bg-white rounded-xl"
               >
                 <option value="" disabled>
                   Select a weight
@@ -548,6 +635,76 @@ export default function SaleForm({
               </select>
             </div>
           </div>
+
+          {purchaseTank && (
+            <div className="space-y-2">
+              <label
+                htmlFor="empty-tank"
+                className="block text-xs font-bold uppercase text-slate-500 mb-1"
+              >
+                Empty Tank
+              </label>
+
+              {emptyTankOptions.length > 0 ? (
+                <select
+                  id="empty-tank"
+                  value={selectedEmptyTankId}
+                  onChange={(e) => setSelectedEmptyTankId(e.target.value)}
+                  className="w-full text-sm py-3 px-4 border border-slate-200 bg-white rounded-xl"
+                >
+                  <option value="" disabled>
+                    Select an empty tank
+                  </option>
+                  {emptyTankOptions.map((option) => (
+                    <option key={option.product_id} value={option.product_id}>
+                      {`${option.brand} - ${formatWeightClassLabel(option.weight_class)} - Stock: ${option.stock_quantity} (${formatDateLabel(option.created_at)})`}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="w-full text-sm py-3 px-4 border border-slate-200 bg-slate-50 rounded-xl text-slate-500">
+                  No empty tanks available
+                </div>
+              )}
+
+              {selectedEmptyTank && (
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                      Empty Tank Initial Price
+                    </p>
+                    <p className="mt-1 text-sm font-bold text-slate-800">
+                      {formatCurrency(emptyTankInitialPrice)}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                      Filled Tank Initial Price
+                    </p>
+                    <p className="mt-1 text-sm font-bold text-slate-800">
+                      {formatCurrency(filledTankInitialPrice)}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                      Empty Tank Unit Price
+                    </p>
+                    <p className="mt-1 text-sm font-bold text-slate-800">
+                      {formatCurrency(emptyTankUnitPrice)}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                      Filled Tank Unit Price
+                    </p>
+                    <p className="mt-1 text-sm font-bold text-slate-800">
+                      {formatCurrency(filledTankUnitPrice)}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded-xl border border-slate-100">

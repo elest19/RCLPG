@@ -47,6 +47,7 @@ export const createSale = [
   body("lpgTankVariant").optional({ values: "falsy" }).trim().isString(),
   body("purchaseTank").optional().isBoolean(),
   body("is_purchased_tank").optional().isBoolean(),
+  body("emptyTankProductId").optional({ values: "falsy" }).isString(),
   body("customerId").optional().isUUID(),
   body("customerName")
     .if(body("customerId").not().exists())
@@ -67,6 +68,7 @@ export const createSale = [
       lpgTankVariant: req.body.lpgTankVariant,
       purchaseTank: req.body.is_purchased_tank ?? req.body.purchaseTank ?? false,
       is_purchased_tank: req.body.is_purchased_tank ?? req.body.purchaseTank ?? false,
+      emptyTankProductId: req.body.emptyTankProductId,
     });
     broadcastRealtime("sales:changed", { action: "created", sale });
     broadcastRealtime("inventory:changed", { action: "stock-updated", resource: "sale", sale });
@@ -84,6 +86,7 @@ export const updateSale = [
   body("lpgTankVariant").optional({ values: "falsy" }).trim().isString(),
   body("purchaseTank").optional().isBoolean(),
   body("is_purchased_tank").optional().isBoolean(),
+  body("emptyTankProductId").optional({ values: "falsy" }).isString(),
   asyncHandler(async (req, res) => {
     const sale = await salesService.updateSale(req.params.saleId, {
       customerName: req.body.customerName,
@@ -96,6 +99,7 @@ export const updateSale = [
       lpgTankVariant: req.body.lpgTankVariant,
       purchaseTank: req.body.is_purchased_tank ?? req.body.purchaseTank ?? false,
       is_purchased_tank: req.body.is_purchased_tank ?? req.body.purchaseTank ?? false,
+      emptyTankProductId: req.body.emptyTankProductId,
     });
     broadcastRealtime("sales:changed", { action: "updated", sale });
     broadcastRealtime("inventory:changed", { action: "stock-updated", resource: "sale", sale });

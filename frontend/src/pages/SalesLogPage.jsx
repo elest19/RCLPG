@@ -572,11 +572,15 @@ export default function SalesLogPage() {
                 phoneNumber: selectedSale.phone_number,
                 priceType: selectedSale.price_type,
                 brand: selectedSale.brand,
-                filled: selectedSale.product_status === "Filled Tank",
+                weightClass: selectedSale.weight_class,
+                isFilled: selectedSale.product_status === "Filled Tank",
                 productId: selectedSale.product_id,
                 quantity: selectedSale.sale_quantity,
                 unitPrice: selectedSale.unit_price,
                 lpgTankVariant: selectedSale.lpg_tank_variant || "",
+                purchaseTank: Boolean(selectedSale.is_purchased_tank),
+                is_purchased_tank: Boolean(selectedSale.is_purchased_tank),
+                emptyTankProductId: selectedSale.empty_tank_product_id || "",
               }}
               submitLabel={saving ? "Saving..." : "Commit Entry Correction"}
               onSubmit={handleOverride}
@@ -671,7 +675,7 @@ export default function SalesLogPage() {
                         {entrySummary.typeLabel}
                       </td>
                       <td className="p-3 font-semibold text-indigo-700 text-center">
-                          {sale.lpg_tank_variant}
+                          {sale.lpg_tank_variant || ""}
                       </td>
                       <td className="p-3 text-center font-bold">
                         {

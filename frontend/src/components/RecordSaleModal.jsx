@@ -195,6 +195,26 @@ export default function RecordSaleModal({ open, onClose, onSuccess }) {
               <dt className="text-slate-500">Unit Price</dt>
               <dd>{formatCurrency(confirmSale.unitPrice)}</dd>
             </div>
+            {confirmSale.purchaseTank && confirmSale.emptyTankProductId && (
+              <>
+                <div className="flex justify-between">
+                  <dt className="text-slate-500">Empty Tank Initial Price</dt>
+                  <dd>{formatCurrency(confirmSale.emptyTankInitialPrice || 0)}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-slate-500">Filled Tank Initial Price</dt>
+                  <dd>{formatCurrency(confirmSale.filledTankInitialPrice || 0)}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-slate-500">Empty Tank Unit Price</dt>
+                  <dd>{formatCurrency(confirmSale.emptyTankUnitPrice || 0)}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-slate-500">Filled Tank Unit Price</dt>
+                  <dd>{formatCurrency(confirmSale.filledTankUnitPrice || 0)}</dd>
+                </div>
+              </>
+            )}
             <div className="flex justify-between border-t pt-2">
               <dt className="font-bold">Total</dt>
               <dd className="font-black text-red-600">

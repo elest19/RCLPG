@@ -45,15 +45,48 @@ async function computeSalesSummaryBundle({
   const summaryResult = await query(
     `SELECT
        COALESCE(SUM(sr.total_amount), 0)::numeric AS total_gross_revenue,
-       COALESCE(SUM(p.initial_price * sr.sale_quantity), 0)::numeric AS total_cogs,
+       COALESCE(SUM(CASE
+         WHEN sr.is_purchased_tank THEN (
+           (p.initial_price + COALESCE(empty_p.initial_price, 0)) * sr.sale_quantity
+         )
+         ELSE p.initial_price * sr.sale_quantity
+       END), 0)::numeric AS total_cogs,
        COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NULL THEN sr.total_amount ELSE 0 END), 0)::numeric AS total_fully_paid_sales,
-       COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NULL THEN p.initial_price * sr.sale_quantity ELSE 0 END), 0)::numeric AS total_fully_paid_cogs,
+       COALESCE(SUM(CASE
+         WHEN credit_sales.sales_id IS NULL THEN
+           CASE
+             WHEN sr.is_purchased_tank THEN ((p.initial_price + COALESCE(empty_p.initial_price, 0)) * sr.sale_quantity)
+             ELSE p.initial_price * sr.sale_quantity
+           END
+         ELSE 0
+       END), 0)::numeric AS total_fully_paid_cogs,
        COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NOT NULL AND GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0) <= 0 THEN sr.total_amount ELSE 0 END), 0)::numeric AS fully_paid_credit_sales,
-       COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NOT NULL AND GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0) <= 0 THEN p.initial_price * sr.sale_quantity ELSE 0 END), 0)::numeric AS fully_paid_credit_cogs,
+       COALESCE(SUM(CASE
+         WHEN credit_sales.sales_id IS NOT NULL AND GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0) <= 0 THEN
+           CASE
+             WHEN sr.is_purchased_tank THEN ((p.initial_price + COALESCE(empty_p.initial_price, 0)) * sr.sale_quantity)
+             ELSE p.initial_price * sr.sale_quantity
+           END
+         ELSE 0
+       END), 0)::numeric AS fully_paid_credit_cogs,
        COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NULL OR GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0) <= 0 THEN sr.total_amount ELSE 0 END), 0)::numeric AS qualified_sales_revenue,
-       COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NULL OR GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0) <= 0 THEN p.initial_price * sr.sale_quantity ELSE 0 END), 0)::numeric AS qualified_cogs,
+       COALESCE(SUM(CASE
+         WHEN credit_sales.sales_id IS NULL OR GREATEST(sr.total_amount - COALESCE(pay.total_paid, 0), 0) <= 0 THEN
+           CASE
+             WHEN sr.is_purchased_tank THEN ((p.initial_price + COALESCE(empty_p.initial_price, 0)) * sr.sale_quantity)
+             ELSE p.initial_price * sr.sale_quantity
+           END
+         ELSE 0
+       END), 0)::numeric AS qualified_cogs,
        COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NOT NULL THEN sr.total_amount ELSE 0 END), 0)::numeric AS projected_credit_sales_revenue,
-       COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NOT NULL THEN p.initial_price * sr.sale_quantity ELSE 0 END), 0)::numeric AS projected_credit_cogs,
+       COALESCE(SUM(CASE
+         WHEN credit_sales.sales_id IS NOT NULL THEN
+           CASE
+             WHEN sr.is_purchased_tank THEN ((p.initial_price + COALESCE(empty_p.initial_price, 0)) * sr.sale_quantity)
+             ELSE p.initial_price * sr.sale_quantity
+           END
+         ELSE 0
+       END), 0)::numeric AS projected_credit_cogs,
        COALESCE(SUM(p.weight_class * sr.sale_quantity), 0)::numeric AS total_volume_kg,
        COUNT(*)::int AS total_orders
      ${saleBaseFrom}`,
@@ -292,6 +325,8 @@ export async function listSales({
       sr.unit_price,
       sr.total_amount,
       sr.lpg_tank_variant,
+      sr.is_purchased_tank,
+      sr.empty_tank_product_id,
       sr.date_created,
       sr.date_updated,
       c.name AS customer_name,
@@ -358,6 +393,8 @@ export async function listSales({
       sr.unit_price,
       sr.total_amount,
       sr.lpg_tank_variant,
+      sr.is_purchased_tank,
+      sr.empty_tank_product_id,
       sr.date_created,
       sr.date_updated,
       c.name AS customer_name,
@@ -424,10 +461,14 @@ export async function listSales({
 export async function getSaleById(saleId) {
   const result = await query(
     `SELECT sr.*, c.name AS customer_name, c.location, c.phone_number,
-            p.brand, p.weight_class, p.status AS product_status
+            p.brand, p.weight_class, p.status AS product_status,
+            empty_p.product_id AS empty_tank_product_id,
+            empty_p.brand AS empty_tank_brand,
+            empty_p.weight_class AS empty_tank_weight_class
      FROM sales_records sr
      JOIN customers c ON c.customer_id = sr.customer_id
      JOIN lpg_products p ON p.product_id = sr.product_id
+     LEFT JOIN lpg_products empty_p ON empty_p.product_id = sr.empty_tank_product_id
      WHERE sr.sale_id = $1`,
     [saleId],
   );
@@ -443,7 +484,13 @@ export async function getSaleById(saleId) {
 //   cylinder) with no trade-in swap, so lpgTankVariant does not apply and
 //   the resolved variant is null.
 async function applySaleStockEffect(
-  { productId, quantity, lpgTankVariant, purchaseTank = false },
+  {
+    productId,
+    quantity,
+    lpgTankVariant,
+    purchaseTank = false,
+    emptyTankProductId = null,
+  },
   client,
 ) {
   const product = await productService.getProductById(productId, client);
@@ -460,6 +507,20 @@ async function applySaleStockEffect(
         );
       }
       await productService.adjustStock(productId, -quantity, client);
+
+      if (emptyTankProductId) {
+        const emptyTank = await productService.getProductById(emptyTankProductId, client);
+        if (!emptyTank) {
+          throw new AppError("Selected empty tank is unavailable", 400);
+        }
+        if (quantity > emptyTank.stock_quantity) {
+          throw new AppError(
+            `Insufficient empty tank stock. Available: ${emptyTank.stock_quantity}, requested: ${quantity}`,
+            400,
+          );
+        }
+        await productService.adjustStock(emptyTankProductId, -quantity, client);
+      }
       return null;
     }
 
@@ -493,6 +554,14 @@ async function applySaleStockEffect(
 // same rule deleteSale already relied on: a swap sale restores via
 // reverseTankSwap, a direct sale simply restores the deducted stock.
 async function reverseSaleStockEffect(existingSale, client) {
+  if (existingSale.is_purchased_tank && existingSale.empty_tank_product_id) {
+    await productService.adjustStock(
+      existingSale.empty_tank_product_id,
+      existingSale.sale_quantity,
+      client,
+    );
+  }
+
   if (existingSale.lpg_tank_variant) {
     await productService.reverseTankSwap(
       {
@@ -560,14 +629,15 @@ export async function createSale(payload) {
         quantity: payload.quantity,
         lpgTankVariant: payload.lpgTankVariant,
         purchaseTank: isPurchasedTank,
+        emptyTankProductId: payload.emptyTankProductId || null,
       },
       client,
     );
 
     const saleResult = await client.query(
       `INSERT INTO sales_records
-        (customer_id, product_id, status, sale_quantity, price_type, unit_price, total_amount, lpg_tank_variant, is_purchased_tank)
-       VALUES ($1, $2, 'Active', $3, $4, $5, $6, $7, $8)
+        (customer_id, product_id, status, sale_quantity, price_type, unit_price, total_amount, lpg_tank_variant, is_purchased_tank, empty_tank_product_id)
+       VALUES ($1, $2, 'Active', $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
       [
         customer.customer_id,
@@ -578,6 +648,7 @@ export async function createSale(payload) {
         totalAmount,
         lpgTankVariant,
         isPurchasedTank,
+        payload.emptyTankProductId || null,
       ],
     );
 
@@ -627,7 +698,8 @@ export async function updateSale(saleId, payload) {
       payload.productId !== existing.product_id ||
       payload.quantity !== existing.sale_quantity ||
       (payload.lpgTankVariant || null) !== (existing.lpg_tank_variant || null) ||
-      Boolean(isPurchasedTank) !== Boolean(existing.is_purchased_tank);
+      Boolean(isPurchasedTank) !== Boolean(existing.is_purchased_tank) ||
+      (payload.emptyTankProductId || null) !== (existing.empty_tank_product_id || null);
 
     let lpgTankVariant = existing.lpg_tank_variant;
 
@@ -639,6 +711,7 @@ export async function updateSale(saleId, payload) {
           quantity: payload.quantity,
           lpgTankVariant: payload.lpgTankVariant,
           purchaseTank: isPurchasedTank,
+          emptyTankProductId: payload.emptyTankProductId || null,
         },
         client,
       );
@@ -657,6 +730,7 @@ export async function updateSale(saleId, payload) {
            total_amount = $6,
            lpg_tank_variant = $7,
            is_purchased_tank = $8,
+           empty_tank_product_id = $9,
            date_updated = NOW()
        WHERE sale_id = $1`,
       [
@@ -668,6 +742,7 @@ export async function updateSale(saleId, payload) {
         totalAmount,
         lpgTankVariant,
         isPurchasedTank,
+        isPurchasedTank ? (payload.emptyTankProductId || null) : null,
       ],
     );
 
@@ -782,11 +857,12 @@ export async function getSalesReport({
   const paymentWhere = paymentFilter.where;
   const paymentParams = paymentFilter.params;
   const paymentWhereForSummary = paymentWhere;
-const summaryParams = paymentParams;
+  const summaryParams = paymentParams;
 
   const saleBaseFrom = `
     FROM sales_records sr
     JOIN lpg_products p ON p.product_id = sr.product_id
+    LEFT JOIN lpg_products empty_p ON empty_p.product_id = sr.empty_tank_product_id
     LEFT JOIN (
       SELECT sales_id
       FROM credit_history
@@ -1014,10 +1090,14 @@ export async function getDailyMetrics({
   const cogsByDate = await query(
     `SELECT
        ${sqlManilaDate("sr.date_created")} AS date,
-       COALESCE(SUM(p.initial_price * sr.sale_quantity), 0)::numeric AS cogs,
+       COALESCE(SUM(CASE
+         WHEN sr.is_purchased_tank THEN ((p.initial_price + COALESCE(empty_p.initial_price, 0)) * sr.sale_quantity)
+         ELSE p.initial_price * sr.sale_quantity
+       END), 0)::numeric AS cogs,
        COALESCE(SUM(p.weight_class * sr.sale_quantity), 0)::numeric AS volume_kg
      FROM sales_records sr
      JOIN lpg_products p ON p.product_id = sr.product_id
+     LEFT JOIN lpg_products empty_p ON empty_p.product_id = sr.empty_tank_product_id
      WHERE sr.status IN ('Active', 'Finished')
        ${saleWhere}
      GROUP BY ${sqlManilaDate("sr.date_created")}
@@ -1029,9 +1109,13 @@ export async function getDailyMetrics({
     `SELECT
        ${sqlManilaDate("sr.date_created")} AS date,
        COALESCE(SUM(sr.total_amount), 0)::numeric AS fully_paid_gross_income,
-       COALESCE(SUM(p.initial_price * sr.sale_quantity), 0)::numeric AS fully_paid_cogs
+       COALESCE(SUM(CASE
+         WHEN sr.is_purchased_tank THEN ((p.initial_price + COALESCE(empty_p.initial_price, 0)) * sr.sale_quantity)
+         ELSE p.initial_price * sr.sale_quantity
+       END), 0)::numeric AS fully_paid_cogs
      FROM sales_records sr
      JOIN lpg_products p ON p.product_id = sr.product_id
+     LEFT JOIN lpg_products empty_p ON empty_p.product_id = sr.empty_tank_product_id
      LEFT JOIN (
        SELECT sales_id
        FROM credit_history
@@ -1065,9 +1149,17 @@ export async function getDailyMetrics({
     `SELECT
        ${sqlManilaDate("sr.date_created")} AS date,
        COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NOT NULL THEN sr.total_amount ELSE 0 END), 0)::numeric AS projected_credit_sales_revenue,
-       COALESCE(SUM(CASE WHEN credit_sales.sales_id IS NOT NULL THEN p.initial_price * sr.sale_quantity ELSE 0 END), 0)::numeric AS projected_credit_cogs
+       COALESCE(SUM(CASE
+         WHEN credit_sales.sales_id IS NOT NULL THEN
+           CASE
+             WHEN sr.is_purchased_tank THEN ((p.initial_price + COALESCE(empty_p.initial_price, 0)) * sr.sale_quantity)
+             ELSE p.initial_price * sr.sale_quantity
+           END
+         ELSE 0
+       END), 0)::numeric AS projected_credit_cogs
      FROM sales_records sr
      JOIN lpg_products p ON p.product_id = sr.product_id
+     LEFT JOIN lpg_products empty_p ON empty_p.product_id = sr.empty_tank_product_id
      LEFT JOIN (
        SELECT sales_id
        FROM credit_history
@@ -1312,6 +1404,7 @@ export async function getSalesReportAnalytics(period, startDate, endDate) {
   const saleBaseFrom = `
     FROM sales_records sr
     JOIN lpg_products p ON p.product_id = sr.product_id
+    LEFT JOIN lpg_products empty_p ON empty_p.product_id = sr.empty_tank_product_id
     LEFT JOIN (
       SELECT sales_id
       FROM credit_history
@@ -1369,7 +1462,10 @@ export async function getSalesReportAnalytics(period, startDate, endDate) {
   const cogsByDate = await query(
     `SELECT
        ${sqlManilaDate("sr.date_created")} AS date,
-       COALESCE(SUM(p.initial_price * sr.sale_quantity), 0)::numeric AS cogs,
+       COALESCE(SUM(CASE
+         WHEN sr.is_purchased_tank THEN ((p.initial_price + COALESCE(empty_p.initial_price, 0)) * sr.sale_quantity)
+         ELSE p.initial_price * sr.sale_quantity
+       END), 0)::numeric AS cogs,
        COALESCE(SUM(p.weight_class * sr.sale_quantity), 0)::numeric AS volume_kg
      ${saleBaseFrom}
      GROUP BY ${sqlManilaDate("sr.date_created")}
