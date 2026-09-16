@@ -91,7 +91,7 @@ export default function SaleForm({
   const [brand, setBrand] = useState(initialValues?.brand || brands[0] || "");
   const [isFilled, setIsFilled] = useState(initialValues?.isFilled ?? true);
   const [purchaseTank, setPurchaseTank] = useState(
-    initialValues?.purchaseTank ?? false,
+    initialValues?.is_purchased_tank ?? initialValues?.purchaseTank ?? false,
   );
   const [productId, setProductId] = useState(initialValues?.productId || "");
   const [quantity, setQuantity] = useState(initialValues?.quantity || 1);
@@ -296,6 +296,7 @@ export default function SaleForm({
       unitPrice: Number(unitPrice),
       isFilled,
       purchaseTank,
+      is_purchased_tank: purchaseTank,
       brand,
       lpgTankVariant: shouldEnableLpgField ? lpgTankVariant : undefined,
     });

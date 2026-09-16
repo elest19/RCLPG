@@ -46,6 +46,7 @@ export const createSale = [
   // this is validated conditionally inside salesService instead.
   body("lpgTankVariant").optional({ values: "falsy" }).trim().isString(),
   body("purchaseTank").optional().isBoolean(),
+  body("is_purchased_tank").optional().isBoolean(),
   body("customerId").optional().isUUID(),
   body("customerName")
     .if(body("customerId").not().exists())
@@ -64,7 +65,8 @@ export const createSale = [
       paymentMethod: req.body.paymentMethod || "Fully Paid",
       initialPayment: req.body.initialPayment,
       lpgTankVariant: req.body.lpgTankVariant,
-      purchaseTank: req.body.purchaseTank ?? false,
+      purchaseTank: req.body.is_purchased_tank ?? req.body.purchaseTank ?? false,
+      is_purchased_tank: req.body.is_purchased_tank ?? req.body.purchaseTank ?? false,
     });
     broadcastRealtime("sales:changed", { action: "created", sale });
     broadcastRealtime("inventory:changed", { action: "stock-updated", resource: "sale", sale });
@@ -81,6 +83,7 @@ export const updateSale = [
   body("priceType").isIn(PRICE_TYPES),
   body("lpgTankVariant").optional({ values: "falsy" }).trim().isString(),
   body("purchaseTank").optional().isBoolean(),
+  body("is_purchased_tank").optional().isBoolean(),
   asyncHandler(async (req, res) => {
     const sale = await salesService.updateSale(req.params.saleId, {
       customerName: req.body.customerName,
@@ -91,7 +94,8 @@ export const updateSale = [
       unitPrice: req.body.unitPrice,
       priceType: req.body.priceType,
       lpgTankVariant: req.body.lpgTankVariant,
-      purchaseTank: req.body.purchaseTank ?? false,
+      purchaseTank: req.body.is_purchased_tank ?? req.body.purchaseTank ?? false,
+      is_purchased_tank: req.body.is_purchased_tank ?? req.body.purchaseTank ?? false,
     });
     broadcastRealtime("sales:changed", { action: "updated", sale });
     broadcastRealtime("inventory:changed", { action: "stock-updated", resource: "sale", sale });

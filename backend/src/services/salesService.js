@@ -516,6 +516,9 @@ export async function createSale(payload) {
   try {
     await client.query("BEGIN");
 
+    const isPurchasedTank =
+      payload.is_purchased_tank ?? payload.purchaseTank ?? false;
+
     let customer;
     if (payload.customerId) {
       customer = await customerService.getCustomerById(payload.customerId, client);
@@ -556,15 +559,15 @@ export async function createSale(payload) {
         productId: payload.productId,
         quantity: payload.quantity,
         lpgTankVariant: payload.lpgTankVariant,
-        purchaseTank: payload.purchaseTank,
+        purchaseTank: isPurchasedTank,
       },
       client,
     );
 
     const saleResult = await client.query(
       `INSERT INTO sales_records
-        (customer_id, product_id, status, sale_quantity, price_type, unit_price, total_amount, lpg_tank_variant)
-       VALUES ($1, $2, 'Active', $3, $4, $5, $6, $7)
+        (customer_id, product_id, status, sale_quantity, price_type, unit_price, total_amount, lpg_tank_variant, is_purchased_tank)
+       VALUES ($1, $2, 'Active', $3, $4, $5, $6, $7, $8)
        RETURNING *`,
       [
         customer.customer_id,
@@ -574,6 +577,7 @@ export async function createSale(payload) {
         payload.unitPrice,
         totalAmount,
         lpgTankVariant,
+        isPurchasedTank,
       ],
     );
 
@@ -604,6 +608,9 @@ export async function updateSale(saleId, payload) {
   try {
     await client.query("BEGIN");
 
+    const isPurchasedTank =
+      payload.is_purchased_tank ?? payload.purchaseTank ?? false;
+
     const existing = await getSaleById(saleId);
     if (!existing) throw new AppError("Sale not found", 404);
     if (["Archived", "Dropped"].includes(existing.status)) {
@@ -619,7 +626,8 @@ export async function updateSale(saleId, payload) {
     const stockEffectChanged =
       payload.productId !== existing.product_id ||
       payload.quantity !== existing.sale_quantity ||
-      (payload.lpgTankVariant || null) !== (existing.lpg_tank_variant || null);
+      (payload.lpgTankVariant || null) !== (existing.lpg_tank_variant || null) ||
+      Boolean(isPurchasedTank) !== Boolean(existing.is_purchased_tank);
 
     let lpgTankVariant = existing.lpg_tank_variant;
 
@@ -630,6 +638,7 @@ export async function updateSale(saleId, payload) {
           productId: payload.productId,
           quantity: payload.quantity,
           lpgTankVariant: payload.lpgTankVariant,
+          purchaseTank: isPurchasedTank,
         },
         client,
       );
@@ -647,6 +656,7 @@ export async function updateSale(saleId, payload) {
            unit_price = $5,
            total_amount = $6,
            lpg_tank_variant = $7,
+           is_purchased_tank = $8,
            date_updated = NOW()
        WHERE sale_id = $1`,
       [
@@ -657,6 +667,7 @@ export async function updateSale(saleId, payload) {
         payload.unitPrice,
         totalAmount,
         lpgTankVariant,
+        isPurchasedTank,
       ],
     );
 
